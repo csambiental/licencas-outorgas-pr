@@ -175,6 +175,9 @@ def main():
     capt_nome = [chave_nome(o['nome']) for o in outs if o['x'] is not None and o['situ'] != 'Irregular' and RX_CAPTA.search(f"{o['interf']} {o['doc']}")]
     capt_num = [o['num'] for o in outs if o['x'] is not None and o['situ'] != 'Irregular' and RX_CAPTA.search(f"{o['interf']} {o['doc']}")]
     grade = Grade(capt)
+    por_nome = {}
+    for o in outs:
+        if o['x'] is not None: por_nome.setdefault((o['cod'], chave_nome(o['nome'])), (o['x'], o['y']))
 
     # ---------------- licenças
     camp_l = ['num_protocolo', 'nome_razao_social', 'cod_ibge', 'nome_municipio', 'sigla_modalidade', 'desc_modalidade', 'desc_grupo_atividade',
@@ -220,6 +223,9 @@ def main():
         if situ == 'Substituída': continue          # histórico já renovado: fora do projeto
         x, y = d['x'], d['y']
         ok = isinstance(x, (int, float)) and isinstance(y, (int, float)) and -55 < x < -47.9 and -27 < y < -22.4 and (round(x, 4), round(y, 4)) not in genericos
+        aprox = False
+        if not ok and situ != 'Vencida' and (d['cod'], chave_nome(d['nome'])) in por_nome:
+            x, y = por_nome[(d['cod'], chave_nome(d['nome']))]; ok = aprox = True
         agua = bool(RX_AGUA.search(f"{d['ativ']} {d['esp']}"))
         oc = ''
         if agua and ok and situ != 'Vencida':
@@ -232,6 +238,7 @@ def main():
                'd': doc_fmt(d['doc']), 'em': br(em), 'va': br(va), 'si': situ}
         if d['sia']: reg['sia'] = 1
         if oc: reg['oc'] = oc
+        if aprox: reg['lo'] = 1
         if ok: reg['xy'] = [round(x, 5), round(y, 5)]
         porm[d['cod']]['lic'].append(reg)
         if ok:
@@ -260,7 +267,7 @@ def main():
               'out_poco': sum(r['tipo'].startswith('Poço') and r['situ'] != 'Irregular' for r in out),
               'out_sup': sum(r['tipo'] == 'Captação superficial' and r['situ'] != 'Irregular' for r in out)}
         st['top'] = [a for a, _ in collections.Counter(r['a'] for r in lic if r['si'] != 'Vencida').most_common(6)]
-        st['sem_coord'] = sum('xy' not in r for r in lic if r['si'] != 'Vencida')
+        st['sem_coord'] = sum('xy' not in r for r in lic if r['si'] != 'Vencida'); st['aprox'] = sum(1 for r in lic if r.get('lo'))
         tot.update({k: v for k, v in st.items() if isinstance(v, int)})
         json.dump({'cod': cod, 'nome': m['nome'], 'atualizado': br(HOJE), 'est': st, 'lic': lic, 'out': out},
                   open(f'{SAIDA}/m/{cod}.json', 'w'), ensure_ascii=False, separators=(',', ':'))

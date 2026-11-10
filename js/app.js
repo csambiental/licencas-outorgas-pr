@@ -124,7 +124,7 @@ function renderMunicipio() {
           <div class="kpi alerta"><b>${fmt(e.out_irreg)}</b><span>outorgas irregulares (IAT)</span></div>
         </div>
         ${e.top.length ? `<h3>Atividades mais licenciadas</h3><ol class="top">${e.top.map(a => `<li>${esc(a)}</li>`).join('')}</ol>` : ''}
-        ${e.sem_coord ? `<p class="dica">${fmt(e.sem_coord)} licença(s) vigente(s) sem coordenada própria no cadastro do IAT: aparecem só na lista.</p>` : ''}
+        ${e.sem_coord || e.aprox ? `<p class="dica">${e.aprox ? `${fmt(e.aprox)} licença(s) sem coordenada no IAT foram localizadas de forma aproximada pela outorga de água do mesmo titular. ` : ''}${e.sem_coord ? `${fmt(e.sem_coord)} licença(s) vigente(s) sem coordenada aparecem só na lista.` : ''}</p>` : ''}
         <div class="baixar"><button id="csvLic">⬇ Planilha de licenças</button><button id="csvOut">⬇ Planilha de outorgas</button></div>
         <div class="abas"><button data-a="lic" class="${aba === 'lic' ? 'on' : ''}">Licenças (${fmt(d.lic.length)})</button><button data-a="out" class="${aba === 'out' ? 'on' : ''}">Outorgas (${fmt(d.out.length)})</button></div>
         <div class="filtros"><input id="fTexto" placeholder="Filtrar por titular, atividade, nº…"><select id="fSit"></select><select id="fTipo"></select></div>
@@ -155,7 +155,7 @@ function itemLic(x) {
         <div class="m">${esc(x.a)}${x.e && x.e !== x.a ? ' – ' + esc(x.e) : ''}</div>
         <div class="m">${esc(x.s)} nº ${esc(x.d)} · emissão ${esc(x.em) || '–'} · validade ${esc(x.va) || '–'}</div>
         ${x.oc ? `<div class="m">💧 Outorga de captação: ${esc(x.oc)}</div>` : ''}
-        <div class="acoes">${x.xy ? `<button data-xy="${esc(JSON.stringify(x.xy))}">📍 ver no mapa</button>` : '<span class="m">sem coordenada</span>'}<a href="${linkSGA(x)}" target="_blank" rel="noopener">📄 licença no SGA (PDF)</a></div></div>`;
+        <div class="acoes">${x.xy ? `<button data-xy="${esc(JSON.stringify(x.xy))}">📍 ver no mapa${x.lo ? ' (aprox.)' : ''}</button>` : '<span class="m">sem coordenada</span>'}<a href="${linkSGA(x)}" target="_blank" rel="noopener">📄 licença no SGA (PDF)</a></div></div>`;
 }
 function itemOut(x) {
     return `<div class="item" style="border-left-color:${COR_OUT[x.tipo] || '#90a4ae'}">
@@ -170,7 +170,7 @@ function popup(f, ll) {
     const p = f.properties, lin = (k, v) => v ? `<tr><td>${k}</td><td>${esc(v)}</td></tr>` : '';
     let h;
     if (f.layer.id.startsWith('lic')) h = `<div class="pop"><h4>${esc(p.n)}</h4><table>${lin('Atividade', p.a)}${lin('Atividade específica', p.e !== p.a ? p.e : '')}${lin('Modalidade', `${p.s} – ${p.g}`)}
-        ${lin('Nº do documento', p.d)}${lin('Emissão', p.em)}${lin('Validade', p.va)}${lin('Situação', p.si)}${lin('Outorga de captação', p.oc)}${lin('Protocolo', p.p)}</table>
+        ${lin('Nº do documento', p.d)}${lin('Emissão', p.em)}${lin('Validade', p.va)}${lin('Situação', p.si)}${lin('Outorga de captação', p.oc)}${lin('Protocolo', p.p)}${lin('Localização', p.lo ? 'Aproximada – ponto da outorga de água do mesmo titular' : 'Cadastrada no licenciamento (IAT)')}</table>
         <a href="${linkSGA(p)}" target="_blank" rel="noopener">📄 Abrir a licença no SGA (PDF) ↗</a></div>`;
     else h = `<div class="pop"><h4>${esc(p.nome)}</h4><table>${lin('Empreendimento', p.emp)}${lin('Tipo', p.interf || p.tipo)}${lin('Documento', p.doc)}${lin('Nº', p.num)}
         ${lin('Situação', p.situ + (p.st && p.st !== p.situ ? ` (${p.st})` : ''))}${lin('Publicação', p.pub)}${lin('Vencimento', p.venc)}${lin('Finalidade', p.fin)}
