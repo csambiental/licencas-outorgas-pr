@@ -8,7 +8,7 @@ USO EXCLUSIVO INTERNO – repositório privado. Não publicar.
 
 Saída: lista/contatos_PR.xlsx (todas) e lista/municipios/<municipio>.csv
 """
-import os, re, io, csv, sys, json, zipfile, collections, datetime, urllib.request, urllib.parse
+import os, time, re, io, csv, sys, json, zipfile, collections, datetime, urllib.request, urllib.parse
 sys.path.insert(0, os.path.dirname(__file__))
 from processar import http, baixar, log, data, br, proto_fmt, doc_fmt, sem_acento, chave_nome, GRUPO, RX_AGUA, RX_CAPTA, LIC, OUT, HOJE
 
@@ -64,20 +64,30 @@ def pasta_receita():
 
 
 def baixar_zip(url):
+    """Baixa e confere o zip (tamanho e integridade); se vier cortado ou inválido, baixa de novo."""
     destino = os.path.join(TMP, url.rsplit('/', 1)[-1])
-    if not os.path.exists(destino):
-        for t in range(5):
-            try:
-                with urllib.request.urlopen(_req(url), timeout=900) as r, open(destino + '.part', 'wb') as f:
-                    while True:
-                        b = r.read(1 << 20)
-                        if not b: break
-                        f.write(b)
-                os.rename(destino + '.part', destino); break
-            except Exception as e:
-                log('  nova tentativa', url.rsplit('/', 1)[-1], e)
-                if t == 4: raise
-    return destino
+    if os.path.exists(destino) and zipfile.is_zipfile(destino):
+        return destino
+    for t in range(6):
+        try:
+            with urllib.request.urlopen(_req(url), timeout=900) as r, open(destino + '.part', 'wb') as f:
+                esperado = int(r.headers.get('Content-Length') or 0)
+                n = 0
+                while True:
+                    b = r.read(1 << 20)
+                    if not b: break
+                    f.write(b); n += len(b)
+            if esperado and n != esperado:
+                raise IOError(f'download incompleto ({n} de {esperado} bytes)')
+            if not zipfile.is_zipfile(destino + '.part'):
+                raise IOError('arquivo recebido não é um zip válido')
+            os.rename(destino + '.part', destino)
+            return destino
+        except Exception as e:
+            log('  nova tentativa', url.rsplit('/', 1)[-1], e)
+            if os.path.exists(destino + '.part'): os.remove(destino + '.part')
+            if t == 5: raise
+            time.sleep(30 * (t + 1))
 
 
 def linhas(zpath):

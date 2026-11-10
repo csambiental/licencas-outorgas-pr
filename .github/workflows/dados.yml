@@ -21,6 +21,8 @@ jobs:
       - name: Baixar e processar (IAT – SGA/SIA e SIGARH)
         run: python3 tools/processar.py saida
       - name: Contatos das empresas (criptografados – uso interno CS)
+        continue-on-error: true   # se a Receita falhar, o mapa público é atualizado mesmo assim
+        timeout-minutes: 280
         env: { CONTATOS_SENHA: "${{ secrets.CONTATOS_SENHA }}" }
         run: |
           pip install --quiet cryptography
