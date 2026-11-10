@@ -10,7 +10,7 @@ concurrency: { group: dados, cancel-in-progress: false }
 jobs:
   dados:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
       - name: Dependências
@@ -20,6 +20,11 @@ jobs:
           git clone -q --depth 1 https://github.com/felt/tippecanoe.git /tmp/tippecanoe && make -s -C /tmp/tippecanoe -j4 && sudo make -s -C /tmp/tippecanoe install
       - name: Baixar e processar (IAT – SGA/SIA e SIGARH)
         run: python3 tools/processar.py saida
+      - name: Contatos das empresas (criptografados – uso interno CS)
+        env: { CONTATOS_SENHA: "${{ secrets.CONTATOS_SENHA }}" }
+        run: |
+          pip install --quiet cryptography
+          python3 tools/contatos_cripto.py saida
       - name: Gerar mosaicos de pontos
         run: |
           tippecanoe -e saida/tiles --no-tile-compression --force -Z6 -z13 -B10 -r1.7 --drop-densest-as-needed --extend-zooms-if-still-dropping \

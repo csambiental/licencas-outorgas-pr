@@ -73,3 +73,11 @@ select, .filtros input { width: 100%; padding: 7px 8px; border: 1px solid var(--
 .res:hover { background: #f1f8e9; }
 .res .tipo { font-size: .72rem; font-weight: 700; color: #fff; padding: 1px 6px; border-radius: 4px; margin-right: 4px; }
 @media (max-width: 800px) { #formBusca input { width: 100%; } #formBusca { width: 100%; } }
+.area { margin-left: auto; padding: 8px 12px; border: 1px solid var(--verde2); color: var(--verde2); background: #fff; border-radius: 6px; cursor: pointer; font-size: .88rem; }
+.area.on { background: var(--verde2); color: #fff; }
+.topo .busca { margin-left: 8px; }
+#dlgArea { border: 0; border-radius: 10px; padding: 18px 20px; width: 340px; box-shadow: 0 4px 24px rgba(0,0,0,.3); }
+#dlgArea h3 { margin: 0 0 6px; color: var(--verde); }
+#dlgArea input { width: 100%; padding: 8px; border: 1px solid var(--borda); border-radius: 6px; }
+.contato { margin-top: 8px; padding: 8px; background: #fffde7; border: 1px solid #fff59d; border-radius: 6px; }
+.contato h5 { margin: 0 0 4px; font-size: .82rem; color: #6d4c41; }

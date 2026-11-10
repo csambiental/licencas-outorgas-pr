@@ -228,6 +228,61 @@ function itemOut(x) {
         <div class="acoes">${x.xy ? `<button data-xy="${esc(JSON.stringify(x.xy))}">📍 ver no mapa</button>` : '<span class="m">sem coordenada</span>'}</div></div>`;
 }
 
+// ---------------- Área CS: contatos criptografados (só abre com a senha da CS)
+let CHAVE = null; const cacheCont = {};
+const b64 = { de: s => Uint8Array.from(atob(s), c => c.charCodeAt(0)), para: u => btoa(String.fromCharCode(...new Uint8Array(u))) };
+async function decifrar(buf, chave) {
+    const u = new Uint8Array(buf);
+    return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: u.slice(0, 12) }, chave, u.slice(12))));
+}
+async function entrarArea(senha) {
+    const cfg = await fetch('data/c/chave.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null);
+    if (!cfg) throw new Error('Os contatos ainda não foram gerados.');
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(senha), 'PBKDF2', false, ['deriveKey']);
+    const sal = Uint8Array.from(cfg.sal.match(/../g).map(h => parseInt(h, 16)));
+    const k = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: sal, iterations: cfg.iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, true, ['decrypt']);
+    try { await decifrar(await fetch('data/c/verifica.bin', { cache: 'no-cache' }).then(r => r.arrayBuffer()), k); } catch (e) { throw new Error('Senha incorreta.'); }
+    CHAVE = k;
+    try { sessionStorage.setItem('csChave', JSON.stringify({ k: b64.para(await crypto.subtle.exportKey('raw', k)), s: cfg.sal })); } catch (e) { }
+    marcarArea();
+}
+function marcarArea() { const b = document.getElementById('btnArea'); b.textContent = CHAVE ? '🔓 Área CS (ativa)' : '🔒 Área CS'; b.classList.toggle('on', !!CHAVE); }
+(async () => {
+    try {
+        const g = JSON.parse(sessionStorage.getItem('csChave') || 'null');
+        const cfg = g && await fetch('data/c/chave.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null);
+        if (g && cfg && cfg.sal === g.s) { CHAVE = await crypto.subtle.importKey('raw', b64.de(g.k), 'AES-GCM', false, ['decrypt']); marcarArea(); }
+    } catch (e) { }
+})();
+document.getElementById('btnArea').onclick = () => {
+    if (CHAVE) { if (confirmarSaida()) { CHAVE = null; try { sessionStorage.removeItem('csChave'); } catch (e) { } marcarArea(); } return; }
+    document.getElementById('msgArea').textContent = ''; document.getElementById('dlgArea').showModal(); document.getElementById('senhaArea').focus();
+};
+function confirmarSaida() { return true; }
+document.getElementById('cancArea').onclick = () => document.getElementById('dlgArea').close();
+document.getElementById('formArea').addEventListener('submit', async e => {
+    e.preventDefault(); const msg = document.getElementById('msgArea'); msg.textContent = 'Verificando…';
+    try { await entrarArea(document.getElementById('senhaArea').value); document.getElementById('senhaArea').value = ''; document.getElementById('dlgArea').close(); }
+    catch (err) { msg.textContent = err.message; }
+});
+async function contatosMun(cod) {
+    if (!CHAVE) return null;
+    if (!(cod in cacheCont)) cacheCont[cod] = fetch(`data/c/${cod}.bin`).then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? decifrar(b, CHAVE) : null).catch(() => null);
+    return cacheCont[cod];
+}
+async function htmlContato(cod, tipo, chave) {
+    const d = await contatosMun(cod); if (!d) return '';
+    const idx = (d[tipo] || {})[chave]; if (!idx || !idx.length) return '<div class="contato"><h5>🔒 Contato (uso interno CS)</h5>Empresa não localizada no cadastro da Receita.</div>';
+    return idx.map(i => d.r[i]).map(c => {
+        const lin = (k, v) => v ? `<tr><td>${k}</td><td>${esc(v)}</td></tr>` : '';
+        if (c.tp === 'Pessoa física (PF)') return `<div class="contato"><h5>🔒 Uso interno CS</h5><b>Pessoa física (PF)</b> – sem dados de contato.</div>`;
+        return `<div class="contato"><h5>🔒 Contato (uso interno CS) · prioridade ${esc(c.prio || '–')}</h5><table>${lin('Tipo', c.tp)}${lin('Razão social', c.rs)}${lin('Nome fantasia', c.nf)}
+            ${lin('CNPJ', c.cnpj)}${lin('Situação na Receita', c.sit)}${lin('Endereço', [c.end, c.bai, c.cep].filter(Boolean).join(' – '))}${lin('Município', c.mun)}
+            ${lin('Telefone', c.tel)}${c.email ? `<tr><td>E-mail</td><td><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></td></tr>` : ''}${lin('Atividade (CNAE)', c.cnae)}${lin('Porte', c.porte)}
+            ${lin('Oportunidades', c.oport)}</table></div>`;
+    }).join('');
+}
+
 function popup(f, ll) {
     const p = f.properties, lin = (k, v) => v ? `<tr><td>${k}</td><td>${esc(v)}</td></tr>` : '';
     let h;
@@ -237,7 +292,11 @@ function popup(f, ll) {
     else h = `<div class="pop"><h4>${esc(p.nome)}</h4><table>${lin('Empreendimento', p.emp)}${lin('Tipo', p.interf || p.tipo)}${lin('Documento', p.doc)}${lin('Nº', p.num)}
         ${lin('Situação', p.situ + (p.st && p.st !== p.situ ? ` (${p.st})` : ''))}${lin('Publicação', p.pub)}${lin('Vencimento', p.venc)}${lin('Finalidade', p.fin)}
         ${lin('Vazão máxima', p.vazao ? p.vazao + ' m³/h' : '')}${lin('Corpo hídrico / aquífero', p.corpo)}${lin('Bacia', p.bacia)}${lin('Setor', p.setor)}</table></div>`;
-    new mapboxgl.Popup({ maxWidth: '340px' }).setLngLat(ll).setHTML(h).addTo(map);
+    const pop = new mapboxgl.Popup({ maxWidth: '360px' }).setLngLat(ll).setHTML(h).addTo(map);
+    if (CHAVE && p.c) {
+        const lic = f.layer.id.startsWith('lic');
+        htmlContato(String(p.c), lic ? 'l' : 'o', lic ? p.p : p.num).then(extra => { if (extra && pop.isOpen()) pop.setHTML(h.replace(/<\/div>$/, extra + '</div>')); });
+    }
 }
 
 function baixarCSV(tipo) {
