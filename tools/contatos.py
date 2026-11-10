@@ -33,14 +33,31 @@ def cnpj_norm(v):
 def fmt_cnpj(c): return f'{c[:2]}.{c[2:5]}.{c[5:8]}/{c[8:12]}-{c[12:]}' if len(c) == 14 else c
 
 
+TOKEN = os.environ.get('RFB_TOKEN', 'gn672Ad4CF8N6TK')   # compartilhamento público da Receita (arquivos.receitafederal.gov.br)
+DAV = 'https://arquivos.receitafederal.gov.br/public.php/webdav/Dados/Cadastros/CNPJ'
+AUTH = {'Authorization': 'Basic ' + __import__('base64').b64encode(f'{TOKEN}:'.encode()).decode()}
+
+
+def _req(url, metodo='GET', extra=None):
+    h = {'User-Agent': 'Mozilla/5.0', **AUTH, **(extra or {})}
+    return urllib.request.Request(url, method=metodo, headers=h)
+
+
 def pasta_receita():
-    import html
+    """Último mês publicado no compartilhamento WebDAV da Receita (novo local desde 2025/2026); antigos endereços como reserva."""
+    try:
+        t = urllib.request.urlopen(_req(DAV + '/', 'PROPFIND', {'Depth': '1'}), timeout=120).read().decode('utf-8', 'replace')
+        meses = sorted(set(re.findall(r'/(\d{4}-\d{2})/?</d:href>', t)))
+        if meses:
+            return f'https://arquivos.receitafederal.gov.br/public.php/dav/files/{TOKEN}/Dados/Cadastros/CNPJ/{meses[-1]}/'
+        log('Receita WebDAV sem meses; resposta:', t[:200])
+    except Exception as e:
+        log('Receita WebDAV indisponível', e)
     for base in BASES:
         try:
             t = urllib.request.urlopen(urllib.request.Request(base, headers={'User-Agent': 'Mozilla/5.0'}), timeout=120).read().decode('utf-8', 'replace')
             meses = sorted(set(re.findall(r'href="(\d{4}-\d{2})/?"', t)))
             if meses: return base + meses[-1] + '/'
-            if 'Estabelecimentos' in t: return base
         except Exception as e:
             log('Receita: base indisponível', base, e)
     raise RuntimeError('Não encontrei a pasta de dados abertos do CNPJ')
@@ -51,14 +68,14 @@ def baixar_zip(url):
     if not os.path.exists(destino):
         for t in range(5):
             try:
-                with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'}), timeout=600) as r, open(destino + '.part', 'wb') as f:
+                with urllib.request.urlopen(_req(url), timeout=900) as r, open(destino + '.part', 'wb') as f:
                     while True:
                         b = r.read(1 << 20)
                         if not b: break
                         f.write(b)
                 os.rename(destino + '.part', destino); break
             except Exception as e:
-                log('  nova tentativa', url, e)
+                log('  nova tentativa', url.rsplit('/', 1)[-1], e)
                 if t == 4: raise
     return destino
 
