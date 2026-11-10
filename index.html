@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Licenças e Outorgas do Paraná – CS Consultoria Ambiental</title>
+    <meta name="description" content="Licenças ambientais (IAT – SGA/SIA) e outorgas de água (SIGARH) de todos os municípios do Paraná, em mapa e por município.">
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css">
+    <link rel="stylesheet" href="css/style.css?v=1">
+</head>
+<body>
+    <header class="topo">
+        <img src="logo.png" alt="CS Consultoria Ambiental" class="logo">
+        <div class="titulo">
+            <h1>Licenças e Outorgas do Paraná</h1>
+            <p id="sub">Licenças ambientais do IAT (SGA/SIA) e outorgas de água do SIGARH, município por município</p>
+        </div>
+        <div class="busca">
+            <input id="buscaMun" list="listaMun" placeholder="Buscar município…" autocomplete="off">
+            <datalist id="listaMun"></datalist>
+        </div>
+    </header>
+
+    <main>
+        <section id="mapa"></section>
+
+        <aside id="painel">
+            <div id="estado">
+                <h2>Paraná</h2>
+                <div class="kpis" id="kpisEstado"></div>
+                <label class="rot">Colorir os municípios por</label>
+                <select id="indicador">
+                    <option value="lic_vig">Licenças ambientais vigentes</option>
+                    <option value="lic_venc6">Licenças que vencem em até 6 meses</option>
+                    <option value="lic_vencidas">Licenças vencidas sem renovação</option>
+                    <option value="lic_agua_sem">Atividades com consumo de água sem outorga de captação próxima</option>
+                    <option value="out_val">Outorgas de água válidas</option>
+                    <option value="out_venc6">Outorgas que vencem em até 6 meses</option>
+                    <option value="out_vencidas">Outorgas vencidas</option>
+                    <option value="out_irreg">Outorgas irregulares (IAT)</option>
+                    <option value="out_poco">Poços outorgados</option>
+                </select>
+                <div id="legendaMapa" class="legenda"></div>
+                <div id="ranking"></div>
+                <p class="dica">Clique num município no mapa (ou busque pelo nome) para ver as licenças e outorgas dele. Aproxime o mapa para ver cada licença e outorga.</p>
+            </div>
+            <div id="municipio" hidden></div>
+        </aside>
+    </main>
+
+    <div class="camadas" id="camadas">
+        <b>No mapa</b>
+        <label><input type="checkbox" data-c="lic-vig" checked> Licenças vigentes</label>
+        <label><input type="checkbox" data-c="lic-venc" checked> Licenças vencidas sem renovação</label>
+        <label><input type="checkbox" data-c="out-val" checked> Outorgas válidas</label>
+        <label><input type="checkbox" data-c="out-prob" checked> Outorgas vencidas / irregulares</label>
+        <label><input type="checkbox" id="satelite"> Imagem de satélite</label>
+        <div id="legendaPontos" class="legenda"></div>
+    </div>
+
+    <footer class="rodape">
+        Fontes públicas: <a href="https://geopr.iat.pr.gov.br/img/repositorio-de-dados/?id=8822b609fde740ad8c26d024404ac0ac" target="_blank" rel="noopener">IAT/GeoPR – Licenciamento Ambiental (SIA e SGA)</a>,
+        <a href="https://www.sga.pr.gov.br/sga-iap/consultarProcessoLicenciamento.do?action=iniciar" target="_blank" rel="noopener">SGA – consulta pública</a>,
+        IAT/GeoPR – outorgas do SIGARH e IBGE. Titulares como constam nas consultas públicas; CPF/CNPJ não são exibidos.
+        Atualizado em <span id="atualizado">–</span>. As localizações são as cadastradas pelos titulares e podem conter erros.
+    </footer>
+
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <script src="js/app.js?v=1"></script>
+</body>
+</html>

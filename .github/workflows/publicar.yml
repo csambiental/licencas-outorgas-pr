@@ -1,0 +1,31 @@
+name: Publicar site
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency: { group: pages, cancel-in-progress: true }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Montar o site com os dados
+        run: |
+          mkdir -p site && cp -r index.html js css logo.png site/
+          if git ls-remote --exit-code --heads origin dados >/dev/null; then
+            git clone -q --depth 1 -b dados "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" site/data && rm -rf site/data/.git
+          else echo "Ainda sem dados – rode o workflow 'Atualizar dados'"; fi
+          touch site/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4
