@@ -6,7 +6,7 @@
     <title>Licenças e Outorgas do Paraná – CS Consultoria Ambiental</title>
     <meta name="description" content="Licenças ambientais (IAT – SGA/SIA) e outorgas de água (SIGARH) de todos os municípios do Paraná, em mapa e por município.">
     <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css">
-    <link rel="stylesheet" href="css/style.css?v=2">
+    <link rel="stylesheet" href="css/style.css?v=3">
 </head>
 <body>
     <header class="topo">
@@ -16,7 +16,7 @@
             <p id="sub">Licenças ambientais do IAT (SGA/SIA) e outorgas de água do SIGARH, município por município</p>
         </div>
         <div class="busca">
-            <input id="buscaMun" list="listaMun" placeholder="Buscar município…" autocomplete="off">
+            <form id="formBusca"><input id="buscaMun" list="listaMun" placeholder="Município, titular, nº da licença, protocolo ou outorga…" autocomplete="off"><button type="submit">Buscar</button></form>
             <datalist id="listaMun"></datalist>
         </div>
     </header>
@@ -25,6 +25,7 @@
         <section id="mapa"></section>
 
         <aside id="painel">
+            <div id="resultados" hidden></div>
             <div id="estado">
                 <h2>Paraná</h2>
                 <div class="kpis" id="kpisEstado"></div>
@@ -66,6 +67,6 @@
     </footer>
 
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-    <script src="js/app.js?v=2"></script>
+    <script src="js/app.js?v=3"></script>
 </body>
 </html>

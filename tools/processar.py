@@ -255,6 +255,14 @@ def main():
 
     # ---------------- estatísticas e arquivos
     feats, tot = [], collections.Counter()
+    IDX_N = collections.defaultdict(dict); IDX_W = collections.defaultdict(dict)
+    PARADAS = {'LTDA', 'EIRELI', 'DOS', 'DAS', 'DE', 'DO', 'DA', 'EPP', 'CIA', 'FILIAL', 'MATRIZ', 'S/A', 'SA', 'LIMITADA', 'EM', 'PARA', 'COM', 'POR'}
+    def idx_num(chave, val):
+        chave = chave.lstrip('0')
+        if len(chave) >= 4: IDX_N[chave[:3]].setdefault(chave, []).append(val)
+    def idx_txt(texto, val):
+        for w in set(re.findall(r'[A-Z0-9]{3,}', sem_acento(texto))):
+            if w not in PARADAS: IDX_W[w[:3]].setdefault(w, []).append(val)
     for cod, m in sorted(MUNS.items()):
         dm = porm.get(cod, {'lic': [], 'out': []})
         lic, out = dm['lic'], dm['out']
@@ -269,6 +277,14 @@ def main():
         st['top'] = [a for a, _ in collections.Counter(r['a'] for r in lic if r['si'] != 'Vencida').most_common(6)]
         st['sem_coord'] = sum('xy' not in r for r in lic if r['si'] != 'Vencida'); st['aprox'] = sum(1 for r in lic if r.get('lo'))
         tot.update({k: v for k, v in st.items() if isinstance(v, int)})
+        for i, r in enumerate(lic):
+            v = [cod, 'l', i]
+            idx_num(re.sub(r'\D', '', r['d']), v); idx_num(re.sub(r'\D', '', r['p']), v); idx_txt(r['n'], v)
+        for i, r in enumerate(out):
+            v = [cod, 'o', i]
+            nums = re.findall(r'\d+', r.get('num', ''))
+            if nums: idx_num(nums[0], v); idx_num(''.join(nums[:2]), v)
+            idx_txt(f"{r['nome']} {r.get('emp', '')}", v)
         json.dump({'cod': cod, 'nome': m['nome'], 'atualizado': br(HOJE), 'est': st, 'lic': lic, 'out': out},
                   open(f'{SAIDA}/m/{cod}.json', 'w'), ensure_ascii=False, separators=(',', ':'))
         g = m['geom'].simplify(0.003, preserve_topology=True)
@@ -280,6 +296,11 @@ def main():
         if isinstance(o, (list, tuple)): return [arred(v) for v in o]
         if isinstance(o, dict): return {k: arred(v) for k, v in o.items()}
         return o
+    for pasta, idx in (('n', IDX_N), ('w', IDX_W)):
+        os.makedirs(f'{SAIDA}/busca/{pasta}', exist_ok=True)
+        for k, d in idx.items():
+            json.dump(d, open(f'{SAIDA}/busca/{pasta}/{k}.json', 'w'), ensure_ascii=False, separators=(',', ':'))
+    log('índice de busca:', sum(len(d) for d in IDX_N.values()), 'números,', sum(len(d) for d in IDX_W.values()), 'palavras,', len(IDX_N) + len(IDX_W), 'arquivos')
     json.dump(arred({'type': 'FeatureCollection', 'features': feats}), open(f'{SAIDA}/municipios.geojson', 'w'), ensure_ascii=False, separators=(',', ':'))
     json.dump({'atualizado': br(HOJE), 'municipios': len(feats), **tot}, open(f'{SAIDA}/resumo.json', 'w'), ensure_ascii=False, indent=1)
     json.dump({'type': 'FeatureCollection', 'features': pts_lic}, open(f'{SAIDA}/pontos_lic.geojson', 'w'), ensure_ascii=False, separators=(',', ':'))

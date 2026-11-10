@@ -85,21 +85,83 @@ function colorir() {
 }
 document.getElementById('indicador').addEventListener('change', colorir);
 
+// ---------------- busca geral: município, titular, nº da licença/protocolo ou nº da outorga
+const cacheMun = {};
+const carregarMun = cod => cacheMun[cod] || (cacheMun[cod] = fetch(`data/m/${cod}.json`).then(r => r.json()));
+const cacheIdx = {};
+const carregarIdx = (p, k) => cacheIdx[p + k] || (cacheIdx[p + k] = fetch(`data/busca/${p}/${k}.json`).then(r => r.ok ? r.json() : {}).catch(() => ({})));
+const semAcento = t => (t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+const PARADAS = new Set(['LTDA', 'EIRELI', 'DOS', 'DAS', 'DE', 'DO', 'DA', 'EPP', 'CIA', 'FILIAL', 'MATRIZ', 'SA', 'LIMITADA', 'EM', 'PARA', 'COM', 'POR']);
+document.getElementById('formBusca').addEventListener('submit', e => { e.preventDefault(); buscar(document.getElementById('buscaMun').value); });
 document.getElementById('buscaMun').addEventListener('change', e => {
-    const alvo = e.target.value.trim().toLowerCase();
-    const f = MUNS.features.find(f => f.properties.nome.toLowerCase() === alvo) || MUNS.features.find(f => f.properties.nome.toLowerCase().startsWith(alvo));
+    const f = MUNS && MUNS.features.find(f => f.properties.nome.toLowerCase() === e.target.value.trim().toLowerCase());
     if (f) { abrirMunicipio(f.properties.cod); e.target.value = ''; }
 });
+async function buscar(q) {
+    q = q.trim(); if (q.length < 3) return;
+    const box = document.getElementById('resultados');
+    box.hidden = false; document.getElementById('estado').hidden = true; document.getElementById('municipio').hidden = true;
+    box.innerHTML = `<button class="voltar" id="fecharBusca">← voltar</button><h2>Buscando “${esc(q)}”…</h2>`;
+    document.getElementById('fecharBusca').onclick = fecharBusca;
+    const Q = semAcento(q), digitos = q.replace(/\D/g, '');
+    const muns = MUNS.features.filter(f => semAcento(f.properties.nome).includes(Q)).slice(0, 5);
+    let chaves = new Set();
+    if (digitos.length >= 4 && digitos.length >= Q.replace(/[^A-Z]/g, '').length) {
+        const nums = (q.match(/\d+/g) || []).map(n => n.replace(/^0+/, ''));
+        // primeiro o número inteiro (licença, protocolo); se não achar, as partes (ex.: 10846 de 10846/2026/OD-GOUT)
+        const cands = [[digitos.replace(/^0+/, '')], [nums[0], (nums[0] || '') + (nums[1] || '')]];
+        for (const grupo of cands) {
+            for (const k of [...new Set(grupo.filter(k => k && k.length >= 4))]) { const d = await carregarIdx('n', k.slice(0, 3)); (d[k] || []).forEach(v => chaves.add(v.join('|'))); }
+            if (chaves.size) break;
+        }
+    } else {
+        const palavras = [...new Set(Q.match(/[A-Z0-9]{3,}/g) || [])].filter(w => !PARADAS.has(w));
+        let primeiro = true;
+        for (const w of palavras) {
+            const d = await carregarIdx('w', w.slice(0, 3)), s = new Set();
+            for (const [k, vs] of Object.entries(d)) if (k.startsWith(w)) vs.forEach(v => s.add(v.join('|')));
+            chaves = primeiro ? s : new Set([...chaves].filter(x => s.has(x))); primeiro = false;
+            if (!chaves.size) break;
+        }
+    }
+    const lista = [...chaves].map(k => k.split('|')).slice(0, 80);
+    const porMun = {}; lista.forEach(([c]) => porMun[c] = 1);
+    await Promise.all(Object.keys(porMun).slice(0, 25).map(carregarMun));
+    const nomeMun = c => (MUNS.features.find(f => f.properties.cod === c) || { properties: { nome: c } }).properties.nome;
+    const itens = [];
+    for (const [c, t, i] of lista) {
+        if (!cacheMun[c]) continue; const d = await cacheMun[c], x = (t === 'l' ? d.lic : d.out)[+i]; if (!x) continue;
+        itens.push(t === 'l'
+            ? { c, t, i, nome: x.n, sit: x.si, cor: COR_LIC[x.g] || '#78909c', rot: 'Licença', l1: `${x.s} nº ${x.d} · protocolo ${x.p}`, l2: `${x.a}${x.e && x.e !== x.a ? ' – ' + x.e : ''} · validade ${x.va || '–'}`, busca: x.d }
+            : { c, t, i, nome: x.nome, sit: x.situ, cor: COR_OUT[x.tipo] || '#90a4ae', rot: 'Outorga', l1: `${x.doc} nº ${x.num || '–'}`, l2: `${x.interf || x.tipo} · vencimento ${x.venc || '–'}`, busca: x.num || x.nome });
+    }
+    box.innerHTML = `<button class="voltar" id="fecharBusca">← voltar</button><h2>Resultado para “${esc(q)}”</h2>
+        ${muns.length ? `<h3>Municípios</h3>${muns.map(f => `<div class="item res" data-m="${f.properties.cod}"><div class="n">📍 ${esc(f.properties.nome)}</div><div class="m">${fmt(f.properties.lic_vig)} licenças vigentes · ${fmt(f.properties.out_val)} outorgas válidas</div></div>`).join('')}` : ''}
+        <h3>Licenças e outorgas (${fmt(chaves.size)}${chaves.size > itens.length ? `, mostrando ${itens.length}` : ''})</h3>
+        ${itens.length ? itens.map((x, k) => `<div class="item res" data-k="${k}" style="border-left-color:${x.cor}"><div class="n"><span class="tipo" style="background:${x.t === 'l' ? '#2e7d32' : '#0277bd'}">${x.rot}</span>${esc(x.nome)} ${tagSit(x.sit)}</div>
+            <div class="m">${esc(x.l1)}</div><div class="m">${esc(x.l2)}</div><div class="m">📍 ${esc(nomeMun(x.c))}</div></div>`).join('')
+            : `<p class="dica">Nada encontrado. Dicas: para números, digite só o número da licença (ex.: 265644), o protocolo (ex.: 18.525.996-0) ou o nº da outorga (ex.: 10846/2026); para titulares, digite parte do nome.</p>`}`;
+    document.getElementById('fecharBusca').onclick = fecharBusca;
+    box.querySelectorAll('[data-m]').forEach(el => el.onclick = () => { fecharBusca(); abrirMunicipio(el.dataset.m); });
+    box.querySelectorAll('[data-k]').forEach(el => el.onclick = async () => {
+        const x = itens[+el.dataset.k]; fecharBusca(); aba = x.t === 'l' ? 'lic' : 'out';
+        await abrirMunicipio(x.c);
+        const ft = document.getElementById('fTexto'); if (ft) { ft.value = x.busca; ft.dispatchEvent(new Event('input')); }
+        const d = await cacheMun[x.c], r = (x.t === 'l' ? d.lic : d.out)[+x.i];
+        if (r && r.xy) setTimeout(() => map.flyTo({ center: r.xy, zoom: 15 }), 400);
+    });
+}
+function fecharBusca() { document.getElementById('resultados').hidden = true; if (munSel) document.getElementById('municipio').hidden = false; else document.getElementById('estado').hidden = false; }
 
 async function abrirMunicipio(cod, zoom = true) {
     const f = MUNS.features.find(x => x.properties.cod === String(cod)); if (!f) return;
     munSel = f.properties; map.setFilter('mun-sel', ['==', ['get', 'cod'], munSel.cod]);
     if (zoom) map.fitBounds(munSel.bbox ? (typeof munSel.bbox === 'string' ? JSON.parse(munSel.bbox) : munSel.bbox) : [-54.6, -26.7, -48, -22.5], { padding: 30, maxZoom: 12 });
     history.replaceState(null, '', `?m=${munSel.cod}`);
-    const el = document.getElementById('municipio'); el.hidden = false; document.getElementById('estado').hidden = true;
+    const el = document.getElementById('municipio'); el.hidden = false; document.getElementById('estado').hidden = true; document.getElementById('resultados').hidden = true;
     el.innerHTML = `<button class="voltar" id="voltar">← Paraná</button><h2>${esc(munSel.nome)}</h2><p class="dica">Carregando…</p>`;
     document.getElementById('voltar').onclick = fecharMunicipio;
-    dadosMun = await fetch(`data/m/${munSel.cod}.json`).then(r => r.json());
+    dadosMun = await carregarMun(munSel.cod);
     mostrar = 150; renderMunicipio();
 }
 function fecharMunicipio() {
