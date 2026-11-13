@@ -140,6 +140,7 @@ op.logo = fs.existsSync(logo) ? 'data:image/png;base64,' + fs.readFileSync(logo)
 if (MODO_EMP) {
     fs.writeFileSync(path.join(pasta, 'relatorio.html'), RaioX.relatorioEmpreendimentoHTML(r, op));
     fs.writeFileSync(path.join(pasta, 'empreendimento.csv'), RaioX.csvEmpreendimento(r));
+    fs.writeFileSync(path.join(pasta, 'preenchimento_matriz.json'), JSON.stringify(RaioX.preenchimentoMatriz(r), null, 1));
 } else {
     fs.writeFileSync(path.join(pasta, 'relatorio.html'), RaioX.relatorioHTML(r, op));
     fs.writeFileSync(path.join(pasta, 'licencas.csv'), RaioX.csv(r, 'lic', op));

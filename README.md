@@ -20,3 +20,5 @@ Relatório de licenças e outorgas num **raio em torno de um ponto** ou num **po
 Clique num ponto do mapa ou num item da lista do município → **🔎 Raio X do empreendimento**. Reúne todas as licenças e outorgas do titular no Paraná (pelo nome normalizado; com a Área CS aberta, também pela raiz do CNPJ), separa as **unidades físicas** (pontos a até 500 m), monta a **matriz preliminar** com os mesmos IDs do Diagnóstico Ambiental Empresarial CS (LIC, AGU, EFL, EMI, CAD, RES, PAS, TER), calcula a **exposição preliminar** e sugere o **escopo do diagnóstico** e os documentos a pedir ao cliente.
 
 Linha de comando: `node tools/raiox.mjs --titular "RAZÃO SOCIAL" --municipio Londrina [--lat .. --lon ..] [--so-municipio]` → `relatorio.html`, `resultado.json`, `empreendimento.csv`. Pessoa física exige `--municipio` (evita homônimos).
+
+O modo empreendimento também gera `preenchimento_matriz.json`: status, P sugerido e evidência pública dos requisitos verificáveis, com os mesmos IDs da Matriz de Diagnóstico Técnico CS (LIC, AGU, EFL, EMI, CAD, RES, PAS, FLO), para pré-preencher a planilha do cliente. A matriz e o relatório técnico ficam fora deste repositório público.

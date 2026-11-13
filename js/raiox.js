@@ -389,12 +389,12 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
                 v6.map(x => `${x.s} ${x.d} vence ${x.va}; prazo de 120 dias ${somaDias(dataBR(x.va), -120) < hoje ? 'já passou' : 'até ' + br(somaDias(dataBR(x.va), -120))}`).join('; '),
                 tarde.length ? 'Protocolar a renovação imediatamente e verificar se há protocolo no SGA.' : 'Preparar e protocolar a renovação antes do prazo de 120 dias.');
         } else if (vig.length) add('LIC-02', 'Licenciamento', 'Requerer renovação com 120 dias de antecedência (LC 140/2011, art. 14, §4º)', 'Conforme', 'Baixo', 'Nenhuma licença vence nos próximos 6 meses.', 'Manter calendário de vencimentos.');
-        if (venc.length && vig.length) add('LIC-03', 'Licenciamento', 'Atividades licenciadas no passado continuam regulares ou foram encerradas', 'Verificar', 'Médio', `${venc.length} licença(s) vencida(s) sem renovação: ${[...new Set(venc.map(x => x.a))].slice(0, 4).join('; ')}.`, 'Confirmar em vistoria se essas atividades foram encerradas ou incorporadas a outra licença.', 'Hipótese a verificar');
+        if (venc.length && vig.length) add('LIC-06', 'Licenciamento', 'Atividades licenciadas no passado continuam regulares ou foram encerradas', 'Verificar', 'Médio', `${venc.length} licença(s) vencida(s) sem renovação: ${[...new Set(venc.map(x => x.a))].slice(0, 4).join('; ')}.`, 'Confirmar em vistoria se essas atividades foram encerradas ou incorporadas a outra licença.', 'Hipótese a verificar');
         if (captProb.length) add('AGU-01', 'Água', 'Captação outorgada ou dispensada (Lei 9.433/1997)', 'Não conforme', 'Alto', captProb.map(docO).join('; '), 'Regularizar ou renovar a outorga no SIGARH.');
         else if (captOk.length) add('AGU-01', 'Água', 'Captação outorgada ou dispensada (Lei 9.433/1997)', 'Conforme', 'Baixo', captOk.slice(0, 4).map(docO).join('; '), 'Conferir em vistoria hidrômetro e volumes captados dentro do outorgado.');
         else if (usaAgua) add('AGU-01', 'Água', 'Captação outorgada ou dispensada (Lei 9.433/1997)', 'Sem evidência', semOut.length ? 'Alto' : 'Médio', semOut.length ? `Atividade com uso típico de água e nenhuma outorga de captação localizada a até 500 m: ${semOut.slice(0, 3).map(x => x.a).join('; ')}.` : 'Atividade com uso típico de água e nenhuma outorga de captação do titular.', 'Verificar a fonte de água (rede pública, poço, captação) e requerer outorga ou dispensa.', 'Hipótese a verificar');
         const o6 = out.filter(x => x.situ === 'Vence em até 6 meses');
-        if (o6.length) add('AGU-02', 'Água', 'Outorgas renovadas antes do vencimento', 'Parcial', 'Médio', o6.map(docO).join('; '), 'Protocolar a renovação das outorgas.');
+        if (o6.length) add('AGU-04', 'Água', 'Outorgas renovadas antes do vencimento', 'Parcial', 'Médio', o6.map(docO).join('; '), 'Protocolar a renovação das outorgas.');
         if (lancProb.length) add('EFL-01', 'Efluentes', 'Lançamento outorgado e dentro dos padrões (CONAMA 430/2011)', 'Não conforme', 'Alto', lancProb.map(docO).join('; '), 'Regularizar a outorga de lançamento.');
         else if (lancOk.length) add('EFL-01', 'Efluentes', 'Lançamento outorgado e dentro dos padrões (CONAMA 430/2011)', 'Parcial', 'Médio', lancOk.map(docO).join('; ') + '. Atendimento aos padrões depende de laudos.', 'Solicitar laudos de efluente na frequência da licença.');
         else if (RX_EFL.test(atv)) add('EFL-01', 'Efluentes', 'Destino de efluentes regular (CONAMA 430/2011)', 'Sem evidência', 'Médio', 'Atividade com geração típica de efluente e sem outorga de lançamento do titular.', 'Verificar o destino (rede pública com anuência, fertirrigação licenciada, ETE com lançamento).', 'Hipótese a verificar');
@@ -402,13 +402,13 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         add('CAD-01', 'Cadastros', 'CTF/APP regular e RAPP entregue (IBAMA)', 'Sem evidência', 'Médio', 'Não consta na base pública da plataforma.', 'Consultar o certificado de regularidade no IBAMA pelo CNPJ.', 'Pendente');
         add('RES-01', 'Resíduos', 'PGRS implantado e destinação rastreada (Lei 12.305/2010)', 'Sem evidência', 'Médio', 'Não consta na base pública da plataforma.', 'Solicitar PGRS, MTRs e CDFs de 12 meses.', 'Pendente');
         add('PAS-01', 'Passivos', 'Sem embargos, autos ou TACs pendentes', 'Sem evidência', 'Médio', 'Não consta na base pública da plataforma.', 'Consultar IBAMA (embargos e autos), IAT, TJPR e MPPR.', 'Pendente');
-        add('TER-01', 'Território', 'Sem sobreposição com UC, APP ou área restrita', 'Sem evidência', 'Médio', 'Não consta na base pública da plataforma.', 'Cruzar as unidades com UCs, hidrografia (APP) e zoneamento municipal.', 'Pendente');
+        add('FLO-03', 'Território', 'Fora de unidade de conservação e zona de amortecimento, ou com anuência do gestor; APP preservada', 'Sem evidência', 'Médio', 'Não consta na base pública da plataforma.', 'Cruzar as unidades com UCs, hidrografia (APP) e zoneamento municipal.', 'Pendente');
 
         const det = M.filter(m => m.natureza !== 'Pendente');
         const pts = det.reduce((s, m) => s + (m.st === 'Conforme' ? 0 : m.risco === 'Alto' ? 3 : m.risco === 'Médio' ? 1 : 0), 0);
         const exposicao = pts >= 6 ? 'Alta' : pts >= 3 ? 'Média' : 'Baixa';
-        const SERV = { 'LIC-01': 'Regularização do licenciamento ambiental (enquadramento e requerimento no IAT)', 'LIC-02': 'Renovação de licença com calendário de condicionantes', 'LIC-03': 'Revisão do portfólio de licenças (encerramento ou incorporação de atividades)',
-            'AGU-01': 'Outorga de captação no SIGARH (ou declaração de uso insignificante)', 'AGU-02': 'Renovação de outorga', 'EFL-01': 'Regularização de efluentes (outorga de lançamento, anuência ou fertirrigação)', 'EMI-01': 'Plano de monitoramento de emissões' };
+        const SERV = { 'LIC-01': 'Regularização do licenciamento ambiental (enquadramento e requerimento no IAT)', 'LIC-02': 'Renovação de licença com calendário de condicionantes', 'LIC-06': 'Revisão do portfólio de licenças (encerramento ou incorporação de atividades)',
+            'AGU-01': 'Outorga de captação no SIGARH (ou declaração de uso insignificante)', 'AGU-04': 'Renovação de outorga', 'EFL-01': 'Regularização de efluentes (outorga de lançamento, anuência ou fertirrigação)', 'EMI-01': 'Plano de monitoramento de emissões' };
         const escopo = det.filter(m => m.st !== 'Conforme' && SERV[m.id]).map(m => ({ id: m.id, servico: m.id === 'EFL-01' && m.st === 'Parcial' ? 'Monitoramento de efluentes (laudos e condicionantes da outorga de lançamento)' : SERV[m.id], risco: m.risco }));
         escopo.push({ id: 'DIAG', servico: 'Diagnóstico Ambiental Empresarial CS – Nível 1 (matriz completa com vistoria e documentos)', risco: '' });
         const docs = ['A. Identificação: contrato social, CNPJ de todas as unidades, responsável ambiental', 'B. Licenciamento: licenças vigentes, condicionantes e comprovantes de atendimento, protocolos de renovação'];
@@ -484,6 +484,19 @@ ${e.entorno ? `<h2>6. Entorno imediato (1 km da unidade principal)</h2><p class=
 <p class="box">Pré-diagnóstico automático com dados públicos do IAT (SGA/SIA e SIGARH) consolidados pela plataforma Licenças e Outorgas do Paraná da CS. Os registros foram reunidos por ${esc(e.vinculo)}; homônimos ou razões sociais diferentes da mesma empresa podem ficar de fora ou entrar indevidamente e devem ser conferidos. Não substitui vistoria, análise documental, parecer técnico nem o Diagnóstico Ambiental Empresarial completo.</p>
 <footer>CS Consultoria Ambiental · Londrina/PR · Raio X do Empreendimento v${e.versao}${e.finalidade === 'Prospecção' ? ' · DOCUMENTO DE USO INTERNO' : ''}</footer>
 </div></body></html>`;
+    };
+    // Pré-preenchimento da Matriz de Diagnóstico Técnico CS (planilha) a partir do Raio X do Empreendimento
+    R.preenchimentoMatriz = function (e) {
+        const ST = { 'Conforme': 'Conforme', 'Parcial': 'Parcial', 'Não conforme': 'Não conforme', 'Verificar': 'Sem evidência', 'Sem evidência': 'Sem evidência' };
+        const P = { 'Conforme': null, 'Parcial': 3, 'Não conforme': 4, 'Verificar': 3, 'Sem evidência': 3 };
+        const linhas = e.matriz.filter(m => m.natureza !== 'Pendente').map(m => ({ id: m.id, status: ST[m.st] || '', p: P[m.st] ?? null, fonte: 'Base pública (Raio X)', evidencia: `[Raio X ${e.base}] ${m.evid}` }));
+        const pend = e.matriz.filter(m => m.natureza === 'Pendente').map(m => ({ id: m.id, nota: `[Raio X] Pendente: ${m.acao}` }));
+        const u = e.unidades[0];
+        return { linhas, pendentes: pend, identificacao: {
+            'Cliente (razão social)': e.titular, 'CNPJ': e.cnpj || '', 'Nome fantasia': (e.ct && e.ct.nf) || '', 'Atividade principal (CNAE)': (e.ct && e.ct.cnae) || '', 'Porte': (e.ct && e.ct.porte) || '',
+            'Unidade avaliada': u ? `${u.id} – ${u.mun}` : '', 'Município': e.municipios.join(', '), 'Coordenadas (lat, lon)': u ? `${u.xy[1].toFixed(5)}, ${u.xy[0].toFixed(5)}` : '',
+            'Licenças e outorgas principais': e.lic.filter(x => x.si !== 'Vencida').slice(0, 6).map(x => `${x.s} ${x.d} (${x.a}) até ${x.va}`).concat(e.out.filter(x => !/Vencida|Irregular/.test(x.situ)).slice(0, 4).map(x => `${x.num} – ${x.interf || x.tipo}`)).join('; '),
+            'Raio X do empreendimento (data da base e exposição preliminar)': `Base de ${e.base}; exposição preliminar ${e.exposicao}; ${e.k.unidades} unidade(s), ${e.k.lic_vig} licenças vigentes, ${e.k.out_val} outorgas válidas` } };
     };
     const unid = (e, x) => x._u || (x.xy ? '—' : 's/ coord.');
     R.csvEmpreendimento = function (e) {
