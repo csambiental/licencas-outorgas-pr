@@ -5,7 +5,7 @@
 (function (raiz) {
     'use strict';
     const R = {};
-    const VERSAO = '1.3';
+    const VERSAO = '1.4';
     const RAIO_EMP = 500;   // entorno imediato do empreendimento (m)
     const MAPBOX_TOKEN = 'pk.eyJ1IjoiY3NhbWJpZW50YWwiLCJhIjoiY205MWk4eHU4MDE3czJxcHNqamR4emd5aiJ9.e8K-ENRHJwXTz_FGGwYExg';
     const SGA = 'https://www.sga.pr.gov.br/sga-iap/consultarProcessoLicenciamento.do?action=exibirDadosPublicoLicenca&ucsChamador=carregarInterfaceInicial';
@@ -497,159 +497,221 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         return N.sort((a, b) => a.prior - b.prior || a.fase - b.fase);
     };
 
+    // ---------------------------------------------------------------- Agenda de obrigações em vigência (derivada das licenças, outorgas e da tipologia)
+    const DIA = 864e5, addDias = (d, n) => new Date(+d + n * DIA);
+    const OPERA = /^(R?LO|LOR|R?LAS|LAU|LAC|R?AA|AuA)\b/i, DISPENSA = /^D(LA|IS)/i;
+    function proxAniversario(d, hoje) { if (!d) return null; let x = new Date(d); while (x < hoje) x = new Date(x.getFullYear() + 1, x.getMonth(), x.getDate()); return x; }
+    function proxData(mes, dia, hoje) { let x = new Date(hoje.getFullYear(), mes, dia); if (x < hoje) x = new Date(hoje.getFullYear() + 1, mes, dia); return x; }
+    function proxTrimestre(hoje, diaMesSeguinte) { const t = Math.floor(hoje.getMonth() / 3); let x = new Date(hoje.getFullYear(), t * 3 + 3, diaMesSeguinte); if (x < hoje) x = new Date(hoje.getFullYear(), t * 3 + 6, diaMesSeguinte); return x; }
+    R.agendaEmpreendimento = function (e, hoje) {
+        hoje = hoje || new Date(); const A = [], m = id => e.matriz.find(x => x.id === id);
+        const st = (d, janela) => !d ? 'pd' : d < hoje ? 'no' : (d - hoje) / DIA <= (janela || 120) ? 'at' : 'ok';
+        const add = (tema, obrig, base, ref, data, quando, s, fonte) => A.push({ tema, obrig, base, ref, data, quando: quando || (data ? br(data) : '–'), st: s || st(data), fonte: fonte || 'calculado' });
+        const vig = e.lic.filter(x => x.si !== 'Vencida');
+        vig.forEach(x => {
+            const va = dataBR(x.va), em = dataBR(x.em), doc = `${x.s} nº ${x.d}`;
+            if (DISPENSA.test(x.s)) { if (va) add('Licenciamento', 'Renovar a declaração de dispensa antes do vencimento', 'Declaração emitida (IAT/município)', `${doc} – ${x.a}`, va, `até ${x.va}`, st(va, 180)); return; }
+            if (va) add('Licenciamento', 'Protocolar a renovação da licença (120 dias antes do vencimento)', 'LC 140/2011, art. 14, §4º', `${doc} – válida até ${x.va}`, addDias(va, -120), `até ${br(addDias(va, -120))}`);
+            add('Licenciamento', 'Cumprir e comprovar as condicionantes da licença', 'Licença emitida (IAT)', doc, null, 'conforme a licença', 'pd', 'Fase 2 – leitura da licença');
+            if (OPERA.test(x.s)) add('Resíduos', 'Declarar o Inventário de Resíduos Sólidos (SGA-IR)', 'Decreto PR 6.674/2002, art. 17; Res. CEMA 70/2009', `${doc} – 12 meses a partir da emissão (${x.em || '–'})`, proxAniversario(em, hoje), null, null);
+        });
+        const outV = e.out.filter(x => !/Vencida|Irregular/.test(x.situ));
+        outV.forEach(x => { const v = dataBR(x.venc); add('Recursos hídricos', 'Renovar a outorga antes do vencimento', 'Lei 9.433/1997; Lei PR 12.726/1999', `${x.doc || 'Outorga'} ${x.num || 's/ nº'} – ${x.interf || x.tipo}`, v, v ? `até ${x.venc}` : 'sem vencimento', v ? st(v, 180) : 'ok'); });
+        if (outV.some(x => /Capta|Poço/.test(x.tipo))) add('Recursos hídricos', 'Medir e registrar a vazão captada (hidrômetro) e manter dentro do outorgado', 'Portaria de outorga (IAT/SIGARH)', `${outV.filter(x => /Capta|Poço/.test(x.tipo)).length} captação(ões)`, null, 'contínuo', 'pd', 'Fase 2 – vistoria');
+        if (outV.some(x => x.tipo === 'Lançamento de efluentes') || (m('EFL-01') && m('EFL-01').st !== 'Sem evidência')) add('Efluentes', 'Laudos do efluente e do corpo receptor na frequência exigida', 'CONAMA 430/2011; licença/outorga', 'Outorga de lançamento / licença', null, 'conforme a licença', 'pd', 'Fase 2 – laudos');
+        if (m('EMI-01')) add('Emissões', 'Monitoramento de fontes fixas (laudos de chaminé)', 'CONAMA 382/2006 e 436/2011', 'Fonte de combustão', null, 'conforme a licença', 'pd', 'Fase 2 – laudos');
+        if (vig.length || e.out.length) {
+            add('Cadastro federal', 'Entregar o Relatório Anual de Atividades (RAPP) no CTF/APP', 'Lei 6.938/1981, art. 17-C, §1º', 'IBAMA – CTF/APP', proxData(2, 31, hoje), null, null);
+            add('Cadastro federal', 'Recolher a TCFA do trimestre', 'Lei 6.938/1981, art. 17-G', 'IBAMA – conforme porte e potencial poluidor', proxTrimestre(hoje, 5), null, null);
+            add('Cadastro federal', 'Manter o Certificado de Regularidade do CTF/APP válido', 'IN IBAMA 6/2013', 'IBAMA – CTF/APP', null, 'contínuo', 'pd', 'Fase 2 – consulta por CNPJ');
+        }
+        add('Resíduos', 'Emitir MTR a cada remessa de resíduos (SINIR; também SGA-MR se houver Autorização Ambiental)', 'Portaria MMA 280/2020; Portaria IAP 212/2019', 'Gerador sujeito a PGRS (Lei 12.305/2010, art. 20)', null, 'a cada remessa', 'pd', 'Fase 2 – MTRs e CDFs');
+        add('Resíduos', 'Emitir a DMR do trimestre no SINIR', 'Portaria MMA 280/2020', 'Movimentação de resíduos do trimestre', proxTrimestre(hoje, 1), `trimestral – a partir de ${br(proxTrimestre(hoje, 1))}`, 'pd', 'Fase 2 – comprovante');
+        add('Resíduos', 'Declarar o Inventário Nacional de Resíduos (SINIR)', 'Portaria MMA 280/2020', 'Ano anterior', proxData(2, 31, hoje), null, null);
+        add('Resíduos', 'Manter o PGRS atualizado e implantado', 'Lei 12.305/2010, arts. 20–24', 'PGRS do empreendimento', null, 'contínuo', 'pd', 'Fase 2 – documento');
+        const ord = x => x.data ? +x.data : 9e15;
+        return A.sort((a, b) => ord(a) - ord(b));
+    };
+
     R.relatorioEmpreendimentoHTML = function (e, op) {
         op = op || {};
-        const G = R.checklistEmpreendimento(e), N = R.pendenciasEmpreendimento(e), todos = G.flatMap(g => g.itens);
+        const agora = new Date(), G = R.checklistEmpreendimento(e), N = R.pendenciasEmpreendimento(e), AG = R.agendaEmpreendimento(e, agora), todos = G.flatMap(g => g.itens);
         const cont = s => todos.filter(i => i.st === s).length, avaliados = todos.filter(i => i.st !== 'na' && i.st !== 'pd').length;
         const u1 = e.unidades[0], perto = x => x.xy && u1 && dist(x.xy, u1.decl.xy) <= RAIO_EMP * 1.4;
         const vista = { area: e.area, lic: e.lic.filter(perto), out: e.out.filter(perto) };
-        const mapaPts = R.mapaURL(vista, 900, 620, 'satellite-streets-v12'), mapaSat = R.mapaURL({ area: e.area, lic: [], out: [] }, 640, 900, 'satellite-streets-v12');
-        const agora = new Date(), dataHora = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }).replace(',', '');
-        const nome = e.titular, mun = e.municipios[0] || (u1 && u1.mun) || '–';
+        const mapaPts = R.mapaURL(vista, 760, 600, 'satellite-streets-v12'), mapaSat = R.mapaURL({ area: e.area, lic: [], out: [] }, 640, 900, 'satellite-streets-v12');
+        const dataHora = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }).replace(',', '');
+        const nome = e.titular, PF = e.pf, mun = e.municipios.join(', ') || (u1 && u1.mun) || '–';
         const codigo = codigoConf({ t: nome, b: e.base, k: e.k, m: e.matriz.map(m => [m.id, m.st]), d: agora.toISOString().slice(0, 10) });
         const link = op.link || '';
         const qr = px => { try { const Q = (op.qrcode || (typeof qrcode !== 'undefined' ? qrcode : null)); if (!Q || !link) return ''; const q = Q(0, 'M'); q.addData(link); q.make(); return q.createSvgTag({ cellSize: Math.max(2, Math.round(px / (q.getModuleCount() + 8))), margin: 4, scalable: true }); } catch (er) { return ''; } };
         const F = n => Number(n || 0).toLocaleString('pt-BR');
-        const card = (rot, val, sub, cls) => { const t = String(val).replace(/<[^>]+>/g, ''), tam = t.length > 34 ? 'xs' : t.length > 20 ? 'sm' : ''; return `<div class="cd ${cls || ''}"><span>${rot}</span><b class="${tam}">${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`; };
+        const card = (rot, val, sub, cls) => `<div class="cd ${cls || ''}"><span>${rot}</span><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
         const selo = st => `<span class="selo ${RX_ST[st][2]}">${RX_ST[st][0]} ${RX_ST[st][1]}</span>`;
-        const sec = (titulo, sub, corpo, quebra) => `<section class="${quebra === false ? '' : 'pg'}"><div class="st"><i></i><div><h2>${titulo}</h2>${sub ? `<p>${sub}</p>` : ''}</div></div>${corpo}</section>`;
-        const ROT = { 1: ['Alta', '#c62828'], 2: ['Média', '#ef6c00'], 3: ['Baixa / verificar', '#558b2f'] };
-        const venc = v => { const d = dataBR(v); if (!v) return '–'; if (!d) return esc(v); const dias = (d - agora) / 864e5;
-            return dias < 0 ? `<b style="color:#c62828">${esc(v)}<br>vencida</b>` : dias <= 180 ? `<b style="color:#e65100">${esc(v)}<br>vence em ${Math.ceil(dias)} dias</b>` : esc(v); };
-        const tab = (cab, linhas, vazio) => linhas.length ? `<table class="rx-tab"><tr>${cab.map(c => `<th>${c}</th>`).join('')}</tr>${linhas.map(l => `<tr>${l.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</table>` : `<p class="hint">${vazio || 'Nada encontrado.'}</p>`;
-        const tl = tab(['Nº', 'Unid.', 'Atividade', 'Modalidade e nº do documento', 'Emissão', 'Validade'], e.lic.map((x, i) => [`<b>${i + 1}</b>`, esc(unid(e, x)),
-            `${esc(x.a)}${x.e && x.e !== x.a ? `<br><span class="hint">${esc(x.e)}</span>` : ''}${x.oc ? `<br><span class="hint">💧 ${esc(x.oc)}</span>` : ''}<br><span class="hint">${esc(x.mun)}</span>`,
-            `${esc(x.s)}<br><span class="mono">nº ${esc(x.d || '–')}</span><br><a href="${linkSGA(x)}" target="_blank" rel="noopener">consulta no SGA ↗</a>`, esc(x.em || '–'), x.si === 'Vencida' ? `<b style="color:#c62828">${esc(x.va || '–')}<br>vencida</b>` : venc(x.va)]), 'Nenhuma licença do titular localizada na base pública.');
-        const to = tab(['Nº', 'Unid.', 'Tipo / finalidade', 'Nº da outorga / declaração', 'Vazão (m³/h)', 'Corpo hídrico / bacia', 'Vencimento'], e.out.map((x, i) => [`<b>${i + 1}</b>`, esc(unid(e, x)),
-            `${esc(x.interf || x.tipo)}${x.fin ? `<br><span class="hint">${esc(x.fin)}</span>` : ''}`, `<span class="mono">${esc(x.num || '–')}</span><br><span class="hint">${esc(x.doc || '')}${x.situ ? ' · ' + esc(x.situ) : ''}</span>`,
-            esc(x.vazao || '–'), `${esc(x.corpo || '–')}<br><span class="hint">${esc(x.bacia || '')}</span>`, /Irregular/.test(x.situ) ? '<b style="color:#c62828">irregular</b>' : venc(x.venc)]), 'Nenhuma outorga do titular localizada na base pública.');
-        const tu = tab(['Unidade', 'Município', 'Coordenadas (lat, long – SIRGAS 2000)', 'Licenças', 'Outorgas', 'Atividades vigentes'], e.unidades.map(u => [`<b>${u.id}</b>${u.dm != null ? `<br><span class="hint">${F(u.dm)} m do ponto consultado</span>` : ''}`, esc(u.mun),
-            `<span class="mono">${u.decl.xy[1].toFixed(5)}, ${u.decl.xy[0].toFixed(5)}</span><br><a href="https://www.google.com/maps?q=${u.decl.xy[1].toFixed(6)},${u.decl.xy[0].toFixed(6)}" target="_blank" rel="noopener">ver no Google Maps ↗</a>`, u.lic, u.out, `<span class="hint">${esc(u.ativ.slice(0, 3).join('; ') || '–')}</span>`]), 'Nenhum registro do titular com coordenada.');
-        const PF = e.pf;
+        let nSec = 0;
+        const sec = (titulo, sub, corpo, quebra, anexo) => `<section class="${quebra === false ? 'cont' : 'pg'}"><div class="st"><i></i><div><h2>${anexo ? `<em>Anexo ${anexo}</em> ` : `<em>${++nSec}</em> `}${titulo}</h2>${sub ? `<p>${sub}</p>` : ''}</div></div>${corpo}</section>`;
+        const ROT = { 1: ['Alta', '#c62828'], 2: ['Média', '#ef6c00'], 3: ['Baixa', '#558b2f'] };
+        const STA = { no: ['Vencido', 'no'], at: ['Próximo', 'at'], ok: ['Em dia', 'ok'], pd: ['Comprovar', 'pd'] };
+        const venc = v => { const d = dataBR(v); if (!v) return '–'; if (!d) return esc(v); const dias = (d - agora) / DIA;
+            return dias < 0 ? `<b class="vm">${esc(v)}<br>vencida</b>` : dias <= 180 ? `<b class="lj">${esc(v)}<br>em ${Math.ceil(dias)} dias</b>` : esc(v); };
+        const tab = (cab, linhas, vazio, cls) => linhas.length ? `<table class="tb ${cls || ''}"><thead><tr>${cab.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>${linhas.map(l => `<tr>${l.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>` : `<p class="hint">${vazio || 'Nada encontrado.'}</p>`;
+        // ---------- síntese
+        const expCor = { Alta: '#c62828', 'Média': '#ef6c00', Baixa: '#2e7d32' }[e.exposicao];
+        const proximo = AG.find(a => a.data && a.data >= agora && a.st !== 'pd');
+        const criticos = N.filter(n => n.prior === 1).length;
+        const constat = [];
+        G.forEach(g => g.itens.filter(i => i.st === 'no').forEach(i => constat.push(['no', i.ind, i.det])));
+        G.forEach(g => g.itens.filter(i => i.st === 'at').forEach(i => constat.push(['at', i.ind, i.det])));
+        const okL = todos.filter(i => i.st === 'ok');
+        if (okL.length) constat.push(['ok', `${okL.length} indicador(es) em acordo`, okL.map(i => i.ind).join('; ')]);
+        const acoes = [...AG.filter(a => a.st === 'no' || a.st === 'at').map(a => ({ c: a.st, t: a.obrig, r: a.ref, q: a.quando })),
+            ...N.filter(n => n.fase === 1 && n.prior <= 2).map(n => ({ c: n.prior === 1 ? 'no' : 'at', t: n.adequacao.split('. ')[0], r: n.tema, q: n.prior === 1 ? 'imediato' : 'até 90 dias' }))];
+        if (!acoes.length && proximo) acoes.push({ c: 'ok', t: proximo.obrig, r: proximo.ref, q: proximo.quando });
+        acoes.push({ c: 'pd', t: 'Iniciar a Fase 2: reunir documentos e agendar a vistoria técnica', r: `${N.filter(n => n.fase === 2).length} item(ns) não verificáveis em base pública`, q: 'próximo passo' });
+        const ICON = { no: '✕', at: '!', ok: '✓', pd: '…' };
+        // ---------- agenda agrupada
+        const ORDT = ['Licenciamento', 'Recursos hídricos', 'Efluentes', 'Emissões', 'Resíduos', 'Cadastro federal'], temas = [...new Set(AG.map(a => a.tema))].sort((a, b) => ORDT.indexOf(a) - ORDT.indexOf(b));
+        const agendaT = `<table class="tb ag"><thead><tr><th>Obrigação</th><th>Referência</th><th>Base legal</th><th>Prazo</th><th>Situação</th></tr></thead><tbody>${temas.map(t => `<tr class="gr"><td colspan="5">${esc(t)}</td></tr>${AG.filter(a => a.tema === t).map(a => `<tr><td><b>${esc(a.obrig)}</b>${a.fonte !== 'calculado' ? `<br><span class="hint">${esc(a.fonte)}</span>` : ''}</td><td>${esc(a.ref)}</td><td class="hint">${esc(a.base)}</td><td class="nw">${esc(a.quando)}</td><td><span class="selo ${STA[a.st][1]}">${STA[a.st][0]}</span></td></tr>`).join('')}`).join('')}</tbody></table>`;
+        const agCont = k => AG.filter(a => a.st === k).length;
+        // ---------- anexos
+        const tl = tab(['Nº', 'Unid.', 'Atividade', 'Documento', 'Emissão', 'Validade'], e.lic.map((x, i) => [`<b>${i + 1}</b>`, esc(unid(e, x)),
+            `${esc(x.a)}${x.e && x.e !== x.a ? `<br><span class="hint">${esc(x.e)}</span>` : ''}<br><span class="hint">${esc(x.mun)}</span>`,
+            `${esc(x.s)} <span class="mono">nº ${esc(x.d || '–')}</span><br><a href="${linkSGA(x)}" target="_blank" rel="noopener">consulta no SGA ↗</a>`, esc(x.em || '–'), x.si === 'Vencida' ? `<b class="vm">${esc(x.va || '–')}<br>vencida</b>` : venc(x.va)]), 'Nenhuma licença do titular localizada na base pública.');
+        const to = tab(['Nº', 'Unid.', 'Tipo / finalidade', 'Documento', 'Vazão (m³/h)', 'Corpo hídrico', 'Vencimento'], e.out.map((x, i) => [`<b>${i + 1}</b>`, esc(unid(e, x)),
+            `${esc(x.interf || x.tipo)}${x.fin ? `<br><span class="hint">${esc(x.fin)}</span>` : ''}`, `<span class="mono">${esc(x.num || '–')}</span><br><span class="hint">${esc(x.doc || '')}</span>`,
+            esc(x.vazao || '–'), `${esc(x.corpo || '–')}<br><span class="hint">${esc(x.bacia || '')}</span>`, /Irregular/.test(x.situ) ? '<b class="vm">irregular</b>' : venc(x.venc)]), 'Nenhuma outorga do titular localizada na base pública (SIGARH).');
+        const tu = tab(['Unidade', 'Município', 'Ponto declarado (lat, long)', 'Licenças', 'Outorgas', 'Atividades vigentes'], e.unidades.map(u => [`<b>${u.id}</b>`, esc(u.mun),
+            `<span class="mono">${u.decl.xy[1].toFixed(5)}, ${u.decl.xy[0].toFixed(5)}</span><br><a href="https://www.google.com/maps?q=${u.decl.xy[1].toFixed(6)},${u.decl.xy[0].toFixed(6)}" target="_blank" rel="noopener">Google Maps ↗</a>`, u.lic, u.out, `<span class="hint">${esc(u.ativ.slice(0, 3).join('; ') || '–')}</span>`]), 'Nenhum registro do titular com coordenada.');
         const contato = op.contatos && e.ct ? [e.ct.tel, e.ct.email].filter(Boolean).join(' · ') : '';
-        const corExp = { Alta: '#c62828', 'Média': '#ef6c00', Baixa: '#2e7d32' }[e.exposicao];
         const fin = { 'Prospecção': 'Uso interno CS – prospecção', 'Diagnóstico': 'Análise técnica CS', 'Entrega': 'Entrega ao cliente' }[e.finalidade] || e.finalidade;
         const logo = esc(op.logo || 'logo.png');
         const blocoCS = `<div class="csb"><img src="${logo}" alt="CS Consultoria Ambiental"><div><b>CS Consultoria Ambiental</b><br><span>Diagnóstico Ambiental Empresarial · licenciamento, outorgas, resíduos, efluentes e ESG · Londrina/PR</span></div></div>`;
+        const legenda = u1 ? `<div class="leg"><i class="pin"></i>ponto declarado ao IAT (${esc(u1.decl.fonte)}) · <i class="ci"></i>entorno de ${RAIO_EMP} m · <i style="background:#2e7d32"></i>licença vigente <i style="background:#e65100"></i>vence em 6 meses <i style="background:#9e9e9e"></i>vencida <i style="background:#0277bd"></i>outorga</div>` : '';
         return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Raio-X do Empreendimento – ${esc(nome)}</title>
 <style>
- @page { size: A4; margin: 22mm 14mm 20mm;
+ @page { size: A4; margin: 20mm 14mm 18mm;
    @top-left { content: "CS Consultoria Ambiental  ·  RAIO-X DO EMPREENDIMENTO"; font: 600 8pt Arial; color: #1f4933; }
-   @top-right { content: "${esc(dataHora)}   ·   Página " counter(page) " de " counter(pages); font: 8pt Arial; color: #5f6d66; }
-   @bottom-left { content: "Código de conferência ${codigo}"; font: 8pt Consolas, monospace; color: #5f6d66; }
-   @bottom-right { content: "Fase 1 – análise automática sobre bases públicas – não substitui vistoria"; font: 7.5pt Arial; color: #8a978f; } }
+   @top-right { content: "${esc(nome.slice(0, 48))}   ·   ${counterTxt()}"; font: 8pt Arial; color: #5f6d66; }
+   @bottom-left { content: "Código de conferência ${codigo}  ·  emitido em ${esc(dataHora)}"; font: 7.5pt Consolas, monospace; color: #5f6d66; }
+   @bottom-right { content: "Fase 1 – bases públicas · não substitui vistoria"; font: 7.5pt Arial; color: #8a978f; } }
  @page :first { margin: 0; @top-left { content: none } @top-right { content: none } @bottom-left { content: none } @bottom-right { content: none } }
  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
- body { font-family: Inter, 'Segoe UI', Arial, sans-serif; color: #1d2a24; margin: 0; font-size: 10.5pt; line-height: 1.45; background: #e9eeeb; }
+ body { font-family: Inter, 'Segoe UI', Arial, sans-serif; color: #1d2a24; margin: 0; font-size: 10pt; line-height: 1.42; background: #e9eeeb; }
  .folha { max-width: 210mm; margin: 0 auto; background: #fff; }
- section, .capa { position: relative; z-index: 1; }
- .pg { break-before: page; padding: 6mm 0 0; }
- @media screen { .pg { padding: 14mm 14mm 8mm; border-top: 10px solid #e9eeeb; } }
+ .pg { break-before: page; } .cont { margin-top: 8mm; }
+ @media screen { .pg, .cont { padding: 12mm 14mm 8mm; } .pg { border-top: 10px solid #e9eeeb; } .cont { margin-top: 0; } }
  .capa { height: 297mm; color: #fff; display: flex; flex-direction: column; padding: 18mm 16mm 14mm; overflow: hidden;
-   background: linear-gradient(160deg, rgba(20,46,32,.93), rgba(31,73,51,.80) 55%, rgba(20,46,32,.96)), url("${esc(mapaSat.url)}") center/cover, #1f4933; }
+   background: linear-gradient(160deg, rgba(20,46,32,.93), rgba(31,73,51,.78) 55%, rgba(20,46,32,.96)), url("${esc(mapaSat.url)}") center/cover, #1f4933; }
  .capa .topo { display: flex; justify-content: space-between; align-items: center; } .capa .topo img { height: 52px; background: #fff; border-radius: 10px; padding: 6px 10px; }
  .capa .data { background: rgba(0,0,0,.35); border-radius: 999px; padding: 6px 14px; font-size: 10pt; }
- .capa .meio { margin-top: auto; margin-bottom: auto; } .capa .kick { letter-spacing: .3em; font-size: 9.5pt; font-weight: 700; color: #83bb4e; }
- .capa h1 { font-size: 46pt; line-height: 1; margin: 8px 0 6px; font-weight: 800; } .capa h1 span { color: #83bb4e; display: block; }
- .capa .sub { font-size: 13pt; opacity: .9; } .capa .tit { font-size: 15pt; font-weight: 700; margin-top: 14px; }
- .capa .faixa { display: grid; grid-template-columns: 0.9fr 2.4fr 1fr auto; gap: 14px; align-items: center; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); border-radius: 14px; padding: 12px 16px; }
- .capa .faixa span { display: block; font-size: 8pt; opacity: .75; text-transform: uppercase; letter-spacing: .08em; } .capa .faixa b { font-size: 10.5pt; overflow-wrap: anywhere; } .capa .faixa b.mono { font-size: 9pt; }
- .capa .qr { background: #fff; border-radius: 8px; padding: 4px; width: 92px; height: 92px; } .capa .qr svg { width: 100%; height: 100%; } .capa .qr:empty { display: none; }
- .capa .fase { display: inline-block; margin-top: 12px; background: #83bb4e; color: #10261a; font-weight: 700; border-radius: 999px; padding: 5px 14px; font-size: 9.5pt; }
- .st { display: flex; gap: 10px; align-items: center; margin: 0 0 10px; } .st i { width: 6px; height: 34px; border-radius: 3px; background: linear-gradient(#83bb4e, #1f4933); }
- .st h2 { margin: 0; font-size: 15pt; color: #1f4933; } .st p { margin: 0; color: #5f6d66; font-size: 9pt; }
- h4 { margin: 14px 0 6px; font-size: 10.5pt; color: #1f4933; }
- .cds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 10px; }
- .cd { border: 1px solid #dfe8e2; border-radius: 10px; padding: 8px 10px; background: #fafcfb; min-width: 0; } .cd span { display: block; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .06em; color: #6b7a72; }
- .cd b { display: block; font-size: 12.5pt; line-height: 1.25; margin-top: 3px; overflow-wrap: break-word; } .cd b.sm { font-size: 11pt; } .cd b.xs { font-size: 9.5pt; } .cd small { display: block; color: #6b7a72; font-size: 8.5pt; margin-top: 2px; }
- .cd.l2 { grid-column: span 2; } .cd.l3 { grid-column: span 3; } .cds.n4 { grid-template-columns: repeat(4, 1fr); } .cds.n4 .cd b { font-size: 16pt; color: #1f4933; }
- .placar { display: grid; grid-template-columns: 1.2fr repeat(4, 1fr); gap: 8px; margin: 6px 0 12px; }
- .placar div { border-radius: 10px; padding: 10px; text-align: center; } .placar b { display: block; font-size: 20pt; } .placar span { font-size: 8.5pt; }
+ .capa .meio { margin: auto 0; } .capa .kick { letter-spacing: .3em; font-size: 9.5pt; font-weight: 700; color: #83bb4e; }
+ .capa h1 { font-size: 46pt; line-height: 1; margin: 8px 0 10px; font-weight: 800; } .capa h1 span { color: #83bb4e; display: block; }
+ .capa .tit { font-size: 17pt; font-weight: 700; } .capa .sub { font-size: 11.5pt; opacity: .9; margin-top: 4px; }
+ .capa .fase { display: inline-block; margin-top: 14px; background: #83bb4e; color: #10261a; font-weight: 700; border-radius: 999px; padding: 5px 14px; font-size: 9.5pt; }
+ .capa .faixa { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 14px; align-items: center; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); border-radius: 14px; padding: 12px 16px; }
+ .capa .faixa span { display: block; font-size: 7.5pt; opacity: .75; text-transform: uppercase; letter-spacing: .08em; } .capa .faixa b { font-size: 10pt; }
+ .capa .qr { background: #fff; border-radius: 8px; padding: 4px; width: 88px; height: 88px; } .capa .qr svg { width: 100%; height: 100%; } .capa .qr:empty { display: none; }
+ .st { display: flex; gap: 10px; align-items: center; margin: 0 0 10px; } .st i { width: 6px; height: 32px; border-radius: 3px; background: linear-gradient(#83bb4e, #1f4933); }
+ .st h2 { margin: 0; font-size: 14.5pt; color: #1f4933; } .st h2 em { font-style: normal; color: #83bb4e; margin-right: 4px; } .st p { margin: 0; color: #5f6d66; font-size: 9pt; }
+ h4 { margin: 12px 0 6px; font-size: 10pt; color: #1f4933; text-transform: uppercase; letter-spacing: .06em; }
+ .id { display: grid; grid-template-columns: 2fr 1.2fr 1fr; gap: 6px; margin-bottom: 8px; }
+ .cd { border: 1px solid #dfe8e2; border-radius: 8px; padding: 6px 9px; background: #fafcfb; min-width: 0; } .cd span { display: block; font-size: 7pt; text-transform: uppercase; letter-spacing: .06em; color: #6b7a72; }
+ .cd b { display: block; font-size: 10pt; line-height: 1.25; margin-top: 2px; overflow-wrap: break-word; } .cd small { display: block; color: #6b7a72; font-size: 8pt; } .cd.l2 { grid-column: span 2; } .cd.l3 { grid-column: span 3; }
+ .sint { display: grid; grid-template-columns: 1.35fr 1fr; gap: 10px; align-items: start; }
+ img.mapa { width: 100%; border-radius: 8px; border: 1px solid #cfd8d3; display: block; }
+ .leg { font-size: 7.5pt; color: #5f6d66; margin: 3px 0 0; } .leg i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 3px -1px 6px; } .leg i.pin { background: #d50000; border-radius: 50% 50% 50% 0; } .leg i.ci { border: 2px solid #f9d71c; background: none; }
+ .exp { border-radius: 10px; padding: 10px 12px; color: #fff; } .exp span { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .1em; opacity: .85; } .exp b { display: block; font-size: 22pt; line-height: 1.1; } .exp small { font-size: 8pt; opacity: .9; }
+ .nums { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; } .nums div { border: 1px solid #dfe8e2; border-radius: 8px; padding: 6px 8px; } .nums b { display: block; font-size: 16pt; color: #1f4933; line-height: 1.1; } .nums span { font-size: 7.5pt; color: #5f6d66; }
+ .nums .vm b { color: #c62828; } .nums .lj b { color: #e65100; }
+ ul.lst { list-style: none; margin: 0; padding: 0; } ul.lst li { display: grid; grid-template-columns: 22px 1fr auto; gap: 6px; padding: 5px 0; border-bottom: 1px solid #eef2ef; break-inside: avoid; font-size: 9.3pt; }
+ ul.lst .ic { width: 18px; height: 18px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 9pt; display: flex; align-items: center; justify-content: center; }
+ .ic.no { background: #c62828; } .ic.at { background: #f9a825; } .ic.ok { background: #2e7d32; } .ic.pd { background: #5c85c4; }
+ ul.lst small { display: block; color: #5f6d66; font-size: 8pt; } ul.lst .q { font-size: 8pt; font-weight: 700; color: #1f4933; white-space: nowrap; text-align: right; }
+ .placar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 4px 0 10px; } .placar div { border-radius: 8px; padding: 7px; text-align: center; } .placar b { display: block; font-size: 17pt; line-height: 1.1; } .placar span { font-size: 7.8pt; }
  .placar .g { background: #1f4933; color: #fff; } .placar .ok { background: #e7f5ec; color: #1b6b3a; } .placar .at { background: #fff6dd; color: #8a5a00; } .placar .no { background: #fdecea; color: #b71c1c; } .placar .pd { background: #e8eef7; color: #2b4f86; }
- .ck { width: 100%; border-collapse: collapse; margin-bottom: 10px; } .ck caption { background: #eef6e6; color: #1f4933; font-weight: 700; font-size: 9pt; letter-spacing: .12em; text-transform: uppercase; padding: 6px; border-radius: 6px; text-align: left; }
- .ck th { font-size: 7.5pt; color: #6b7a72; text-align: left; text-transform: uppercase; letter-spacing: .06em; padding: 6px 4px; border-bottom: 1px solid #dfe8e2; } .ck th:last-child, .ck td:last-child { text-align: right; width: 150px; }
- .ck td { padding: 7px 4px; border-bottom: 1px solid #eef2ef; vertical-align: top; } .ck tr { break-inside: avoid; }
- .ck .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; } .ck .det { display: block; color: #5f6d66; font-size: 8.5pt; margin: 3px 0 0 16px; }
- .selo { display: inline-block; font-size: 8pt; font-weight: 700; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+ .ck { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 9pt; } .ck caption { background: #eef6e6; color: #1f4933; font-weight: 700; font-size: 8pt; letter-spacing: .12em; text-transform: uppercase; padding: 5px 8px; text-align: left; border-radius: 6px; }
+ .ck td { padding: 5px 4px; border-bottom: 1px solid #eef2ef; vertical-align: top; } .ck td:last-child { text-align: right; width: 140px; } .ck tr { break-inside: avoid; } .ck .det { display: block; color: #5f6d66; font-size: 8pt; margin-top: 2px; }
+ .selo { display: inline-block; font-size: 7.5pt; font-weight: 700; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
  .selo.ok { background: #e7f5ec; color: #1b6b3a; } .selo.at { background: #fff3d6; color: #8a5a00; } .selo.no { background: #fdecea; color: #b71c1c; } .selo.pd { background: #e8eef7; color: #2b4f86; } .selo.na { background: #eef1ef; color: #7b8781; }
- .dot.ok { background: #2e7d32; } .dot.at { background: #f9a825; } .dot.no { background: #c62828; } .dot.pd { background: #5c85c4; } .dot.na { background: #b0bab4; }
- img.mapa { width: 100%; border-radius: 10px; border: 1px solid #cfd8d3; margin: 4px 0 2px; } .leg { font-size: 8pt; color: #5f6d66; margin-bottom: 6px; }
- .leg i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 3px -1px 8px; }
- table.rx-tab { width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-bottom: 6px; } .rx-tab th { background: #1d2a24; color: #fff; text-align: left; padding: 6px; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .04em; }
- .rx-tab td { border-bottom: 1px solid #e5ebe7; padding: 5px 6px; vertical-align: top; } .rx-tab tr { break-inside: avoid; }
- .rx-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
- .mono { font-family: Consolas, monospace; font-size: 8.5pt; } .hint { color: #5f6d66; font-size: 8.5pt; } a { color: #1f4933; }
- .obs { border: 1px solid #dfe8e2; border-left: 4px solid #83bb4e; border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 9pt; background: #fafcfb; }
- .exp { border-radius: 10px; padding: 10px 12px; margin: 6px 0 10px; color: #fff; display: flex; justify-content: space-between; align-items: center; } .exp b { font-size: 15pt; } .exp span { font-size: 9pt; opacity: .9; max-width: 72%; }
- .fonte { display: grid; grid-template-columns: 30% 1fr; gap: 4px 12px; font-size: 9pt; } .fonte b { color: #1f4933; }
- .doc { columns: 2; font-size: 9pt; margin: 4px 0 8px; padding-left: 18px; } .doc li { break-inside: avoid; margin-bottom: 3px; }
- .valida { display: flex; gap: 14px; align-items: center; border: 1px solid #dfe8e2; border-radius: 10px; padding: 10px; margin-top: 12px; } .valida .qr { width: 96px; height: 96px; } .valida .qr svg { width: 100%; height: 100%; } .valida .qr:empty { display: none; }
- .csb { display: flex; gap: 14px; align-items: center; border-top: 3px solid #83bb4e; margin-top: 14px; padding-top: 10px; font-size: 9pt; color: #1f4933; } .csb img { height: 46px; } .csb span { color: #5f6d66; }
- .interno { background: #fdecea; color: #b71c1c; font-weight: 700; text-align: center; border-radius: 8px; padding: 6px; margin: 0 0 8px; font-size: 9pt; }
+ table.tb { width: 100%; border-collapse: collapse; font-size: 8.4pt; margin-bottom: 6px; } .tb th { background: #1d2a24; color: #fff; text-align: left; padding: 5px 6px; font-size: 7.2pt; text-transform: uppercase; letter-spacing: .04em; }
+ .tb td { border-bottom: 1px solid #e5ebe7; padding: 5px 6px; vertical-align: top; } .tb tr { break-inside: avoid; } .tb thead { display: table-header-group; }
+ .tb tr.gr td { background: #eef6e6; color: #1f4933; font-weight: 700; font-size: 7.8pt; letter-spacing: .1em; text-transform: uppercase; padding: 4px 6px; }
+ .tb.ag td:nth-child(4) { white-space: nowrap; } .nw { white-space: nowrap; }
+ .vm { color: #c62828; } .lj { color: #e65100; } .rx-sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; }
+ .mono { font-family: Consolas, monospace; font-size: 8.2pt; } .hint { color: #5f6d66; font-size: 8pt; } a { color: #1f4933; }
+ .obs { border: 1px solid #dfe8e2; border-left: 4px solid #83bb4e; border-radius: 8px; padding: 7px 10px; margin: 6px 0; font-size: 9pt; background: #fafcfb; }
+ .fonte { display: grid; grid-template-columns: 28% 1fr; gap: 3px 12px; font-size: 8.6pt; } .fonte b { color: #1f4933; }
+ .doc { columns: 2; font-size: 8.6pt; margin: 4px 0 8px; padding-left: 16px; } .doc li { break-inside: avoid; margin-bottom: 2px; }
+ .valida { display: flex; gap: 14px; align-items: center; border: 1px solid #dfe8e2; border-radius: 10px; padding: 10px; margin-top: 10px; } .valida .qr { width: 88px; height: 88px; } .valida .qr svg { width: 100%; height: 100%; } .valida .qr:empty { display: none; }
+ .csb { display: flex; gap: 14px; align-items: center; border-top: 3px solid #83bb4e; margin-top: 12px; padding-top: 8px; font-size: 8.6pt; color: #1f4933; } .csb img { height: 40px; } .csb span { color: #5f6d66; }
+ .interno { background: #fdecea; color: #b71c1c; font-weight: 700; text-align: center; border-radius: 8px; padding: 5px; margin: 0 0 8px; font-size: 9pt; }
  .noprint { text-align: center; padding: 14px; } .noprint button { padding: 10px 20px; font-size: 14px; background: #1f4933; color: #fff; border: 0; border-radius: 8px; cursor: pointer; }
- @media print { body { background: #fff; } .noprint { display: none; } h4 { break-after: avoid; } img.mapa { break-inside: avoid; max-height: 125mm; object-fit: cover; } }
+ @media print { body { background: #fff; } .noprint { display: none; } h4 { break-after: avoid; } }
 </style></head><body>
-${op.botaoImprimir === false ? '' : '<p class="noprint"><button onclick="window.print()">Salvar em PDF / imprimir</button> <span class="hint">Use "Salvar como PDF", papel A4, com "Gráficos de fundo" ligado.</span></p>'}
+${op.botaoImprimir === false ? '' : '<p class="noprint"><button onclick="window.print()">Salvar em PDF / imprimir</button> <span class="hint">Papel A4, com "Gráficos de fundo" ligado.</span></p>'}
 <div class="folha">
 <div class="capa">
   <div class="topo"><img src="${logo}" alt="CS Consultoria Ambiental"><span class="data">${esc(dataHora)}</span></div>
-  <div class="meio"><div class="kick">DIAGNÓSTICO AMBIENTAL EMPRESARIAL · CONSULTA AUTOMÁTICA</div><h1>Raio-X do<span>Empreendimento</span></h1>
-    <div class="sub">Consulta automática a ${todos.length} indicadores em bases públicas oficiais<br><b>${esc(e.municipios.join(', ') || mun)}</b></div>
-    <div class="tit">${esc(nome)}</div><span class="fase">FASE 1 · DADOS PÚBLICOS</span></div>
-  <div class="faixa"><div><span>Emitido por</span><b>CS Consultoria Ambiental</b></div><div><span>${PF ? 'Titular' : 'Titular · CNPJ'}</span><b>${esc(nome)}</b>${!PF && e.cnpj ? `<br><b class="mono">${esc(e.cnpj)}</b>` : ''}</div>
-    <div><span>Unidades · finalidade</span><b>${e.k.unidades} unidade(s)</b><br><b style="font-size:9pt">${esc(fin)}</b></div><div class="qr">${qr(92)}</div></div>
+  <div class="meio"><div class="kick">DIAGNÓSTICO AMBIENTAL EMPRESARIAL</div><h1>Raio-X do<span>Empreendimento</span></h1>
+    <div class="tit">${esc(nome)}</div><div class="sub">${esc(mun)}${!PF && e.cnpj ? ` · CNPJ ${esc(e.cnpj)}` : ''}</div>
+    <span class="fase">FASE 1 · SITUAÇÃO LEGAL E OBRIGAÇÕES EM VIGÊNCIA</span></div>
+  <div class="faixa"><div><span>Emitido por</span><b>CS Consultoria Ambiental</b></div><div><span>Finalidade</span><b>${esc(fin)}</b></div><div><span>Base de dados</span><b>${esc(e.base || '–')}</b></div><div class="qr">${qr(88)}</div></div>
 </div>
 
-${sec('Detalhes do empreendimento', 'Identificação, cadastro e localização da unidade principal', `
+${sec('Síntese executiva', 'Onde está, como está e o que fazer agora', `
   ${e.finalidade === 'Prospecção' ? '<div class="interno">DOCUMENTO DE USO INTERNO – contém contatos</div>' : ''}
-  <div class="cds">${card('Titular', esc(nome), '', 'l2')}${card(PF ? 'Tipo' : 'CNPJ', PF ? 'Pessoa física' : `<span class="mono">${esc(e.cnpj || 'não identificado')}</span>`)}
-  ${e.ct && e.ct.nf ? card('Nome fantasia', esc(e.ct.nf)) : ''}${e.ct && e.ct.cnae ? card('Atividade principal (CNAE)', esc(e.ct.cnae), '', 'l2') : ''}
-  ${e.ct && (e.ct.porte || e.ct.sit) ? card('Porte · situação na Receita', esc([e.ct.porte, e.ct.sit].filter(Boolean).join(' · '))) : ''}
-  ${!PF && e.ct && e.ct.end ? card('Endereço (Receita Federal)', esc(e.ct.end), '', 'l2') : ''}${contato ? card('Contato (uso interno)', esc(contato), '', 'l3') : ''}
-  ${card('Município(s)', esc(e.municipios.join(', ') || '–'))}${card('Ponto declarado (unidade principal)', u1 ? `<span class="mono">${u1.decl.xy[1].toFixed(5)}, ${u1.decl.xy[0].toFixed(5)}</span>` : '–', u1 ? `${u1.id} · ${esc(u1.mun)} · <a href="https://www.google.com/maps/@${u1.decl.xy[1].toFixed(6)},${u1.decl.xy[0].toFixed(6)},300m/data=!3m1!1e3" target="_blank" rel="noopener">satélite ↗</a>` : '')}
-  ${card('Base de dados', esc(e.base || '–'), `motor Raio-X v${e.versao}`)}${card('Vínculo dos registros', esc(e.vinculo), '', 'l3')}</div>
-  ${u1 ? `<img class="mapa" src="${esc(mapaPts.url)}" alt="Localização da unidade principal" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div style="display:none">${R.croquiSVG(vista)}</div>
-  <div class="leg"><i style="background:#d50000;border-radius:50% 50% 50% 0"></i><b>ponto de localização declarado</b> (${esc(u1.decl.fonte)}) · círculo amarelo: ${RAIO_EMP} m de entorno sobre imagem de satélite (Mapbox/Maxar).<i style="background:#2e7d32"></i>licença vigente<i style="background:#e65100"></i>vence em 6 meses / água sem outorga<i style="background:#9e9e9e"></i>licença vencida<i style="background:#0277bd"></i>outorga válida<i style="background:#c62828"></i>outorga vencida/irregular</div>` : '<p class="hint">Sem registro do titular com coordenada – localização a confirmar com o cliente.</p>'}`)}
+  <div class="id">${card('Titular', esc(nome), PF ? 'pessoa física' : e.cnpj ? `CNPJ <span class="mono">${esc(e.cnpj)}</span>` : 'CNPJ não identificado na base pública')}
+   ${card('Atividade', esc((e.ct && e.ct.cnae) || (u1 && u1.ativ[0]) || '–'), e.ct && e.ct.porte ? esc(e.ct.porte) : '')}
+   ${card('Ponto declarado', u1 ? `<span class="mono">${u1.decl.xy[1].toFixed(5)}, ${u1.decl.xy[0].toFixed(5)}</span>` : '–', u1 ? `${esc(u1.mun)} · <a href="https://www.google.com/maps/@${u1.decl.xy[1].toFixed(6)},${u1.decl.xy[0].toFixed(6)},400m/data=!3m1!1e3" target="_blank" rel="noopener">satélite ↗</a>` : '')}
+   ${contato ? card('Contato (uso interno)', esc(contato), '', 'l3') : ''}</div>
+  <div class="sint"><div>${u1 ? `<img class="mapa" src="${esc(mapaPts.url)}" alt="Imagem de satélite do entorno de ${RAIO_EMP} m" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div style="display:none">${R.croquiSVG(vista, 760, 600)}</div>${legenda}` : '<p class="hint">Sem registro do titular com coordenada – localização a confirmar.</p>'}</div>
+   <div><div class="exp" style="background:${expCor}"><span>Exposição legal preliminar</span><b>${esc(e.exposicao)}</b><small>${cont('no')} item(ns) em desacordo · ${cont('at')} em atenção · ${cont('pd')} a comprovar na Fase 2</small></div>
+    <div class="nums"><div><b>${F(e.k.lic_vig)}</b><span>licenças vigentes</span></div><div class="${e.k.lic_venc6 ? 'lj' : ''}"><b>${F(e.k.lic_venc6)}</b><span>vencem em até 6 meses</span></div>
+     <div><b>${F(e.k.out_val)}</b><span>outorgas válidas</span></div><div class="${agCont('no') ? 'vm' : agCont('at') ? 'lj' : ''}"><b>${F(agCont('no') + agCont('at'))}</b><span>prazos vencidos ou próximos</span></div></div>
+    ${proximo ? `<div class="obs" style="margin-top:6px"><b>Próximo prazo:</b> ${esc(proximo.obrig)} – ${esc(proximo.quando)}<br><span class="hint">${esc(proximo.ref)}</span></div>` : ''}</div></div>
+  <h4>Principais constatações</h4>
+  <ul class="lst">${constat.slice(0, 6).map(([c, t, d]) => `<li><span class="ic ${c}">${ICON[c]}</span><div>${esc(t)}${d ? `<small>${esc(d.length > 220 ? d.slice(0, 217) + '…' : d)}</small>` : ''}</div><span></span></li>`).join('')}</ul>
+  <h4>O que fazer agora</h4>
+  <ul class="lst">${acoes.slice(0, 6).map(a => `<li><span class="ic ${a.c}">${ICON[a.c]}</span><div>${esc(a.t)}<small>${esc(a.r)}</small></div><span class="q">${esc(a.q)}</span></li>`).join('')}</ul>`)}
 
-${sec('Resultado da análise', 'Resumo dos indicadores consultados', `
-  <div class="placar"><div class="g"><b>${cont('ok')}/${avaliados}</b><span>indicadores verificáveis em acordo</span></div><div class="ok"><b>${cont('ok')}</b><span>✓ em acordo</span></div><div class="at"><b>${cont('at')}</b><span>! atenção</span></div><div class="no"><b>${cont('no')}</b><span>✕ em desacordo</span></div><div class="pd"><b>${cont('pd')}</b><span>… pendentes – Fase 2</span></div></div>
-  <div class="exp" style="background:${corExp}"><b>Exposição preliminar: ${esc(e.exposicao)}</b><span>Calculada só com os requisitos verificáveis na base pública (${e.matriz.filter(m => m.natureza !== 'Pendente').length} de ${e.matriz.length}). Os pendentes entram na Fase 2, com documentos e vistoria.</span></div>
-  <div class="cds n4">${card('Licenças vigentes', F(e.k.lic_vig), `${F(e.k.lic_venc6)} vencem em até 6 meses`)}${card('Licenças vencidas', F(e.k.lic_vencidas), 'sem renovação registrada')}${card('Outorgas válidas', F(e.k.out_val), `${F(e.k.out_prob)} vencidas ou irregulares`)}${card('Captação outorgada', F(e.k.vazao_capt_m3h), 'm³/h')}</div>
-  ${G.map(g => `<table class="ck"><caption>${g.nome}</caption><tr><th>Indicador</th><th>Status</th></tr>${g.itens.map(i => `<tr><td><span class="dot ${RX_ST[i.st][2]}"></span>${esc(i.ind)}${i.det ? `<span class="det">${esc(i.det)}</span>` : ''}</td><td>${selo(i.st)}</td></tr>`).join('')}</table>`).join('')}`)}
+${sec('Obrigações e prazos em vigência', 'O que a empresa precisa cumprir durante a validade das licenças e outorgas', `
+  <div class="placar" style="grid-template-columns:repeat(4,1fr)"><div class="no"><b>${agCont('no')}</b><span>vencidos</span></div><div class="at"><b>${agCont('at')}</b><span>próximos (até 120 dias)</span></div><div class="ok"><b>${agCont('ok')}</b><span>em dia</span></div><div class="pd"><b>${agCont('pd')}</b><span>comprovar na Fase 2</span></div></div>
+  ${agendaT}
+  <p class="hint">Prazos calculados a partir das datas das licenças e outorgas públicas e das obrigações periódicas aplicáveis à atividade. "Comprovar" = obrigação contínua cujo cumprimento só se verifica com documentos (comprovantes, MTR/CDF, laudos) ou consulta com login do próprio cliente (CTF/APP, SINIR, SGA-MR/IR). Condicionantes específicas de cada licença entram quando a licença é anexada (Fase 2).</p>`)}
 
-${sec('Licenciamento ambiental', `Licenças do titular no IAT (SGA/SIA) – ${F(e.lic.length)} registro(s)`, tl)}
+${sec('Situação por tema', `${cont('ok')} de ${avaliados} indicadores verificáveis em acordo`, `
+  <div class="placar"><div class="g"><b>${cont('ok')}/${avaliados}</b><span>em acordo</span></div><div class="ok"><b>${cont('ok')}</b><span>✓ em acordo</span></div><div class="at"><b>${cont('at')}</b><span>! atenção</span></div><div class="no"><b>${cont('no')}</b><span>✕ desacordo</span></div><div class="pd"><b>${cont('pd')}</b><span>… Fase 2</span></div></div>
+  ${G.map(g => `<table class="ck"><caption>${g.nome}</caption>${g.itens.map(i => `<tr><td>${esc(i.ind)}${i.det ? `<span class="det">${esc(i.det)}</span>` : ''}</td><td>${selo(i.st)}</td></tr>`).join('')}</table>`).join('')}`)}
 
-${sec('Recursos hídricos', `Outorgas e declarações do titular no SIGARH – ${F(e.out.length)} registro(s)`, to, e.lic.length + e.out.length > 14)}
+${sec('Plano de ação sugerido', 'Adequações priorizadas, documentos para a Fase 2 e próximo passo', `
+  <table class="tb"><thead><tr><th>Nº</th><th>Prioridade</th><th>Tema</th><th>Situação encontrada</th><th>Ação / serviço</th></tr></thead><tbody>
+  ${N.map((n, i) => `<tr><td><b>${i + 1}</b></td><td class="nw"><span class="rx-sw" style="background:${ROT[n.prior][1]}"></span>${ROT[n.prior][0]}${n.fase === 2 ? '<br><span class="hint">Fase 2</span>' : ''}</td><td>${esc(n.tema)}<br><span class="hint">${esc(n.id)}</span></td><td>${esc(n.achado)}</td><td>${esc(n.adequacao)}</td></tr>`).join('')}</tbody></table>
+  <h4>Documentos a solicitar para a Fase 2</h4><ul class="doc">${e.docs.concat(['F. Acessos/comprovantes: CTF/APP (RAPP, TCFA, Certificado de Regularidade), SINIR (MTR, DMR, inventário), SGA-MR/SGA-IR']).map(d => `<li>${esc(d)}</li>`).join('')}</ul>
+  <div class="obs"><b>Próximo passo com a CS:</b> Fase 2 – Diagnóstico Ambiental Empresarial completo (matriz CS Nível 1 com documentos, condicionantes e vistoria), índice ICMA e plano 5W2H, unificado com esta Fase 1.</div>${blocoCS}`)}
 
-${sec('Unidades e entorno', `Unidades físicas do titular e situação no raio de ${RAIO_EMP} m do ponto declarado`, `
-  ${tu}${e.semCoord.lic + e.semCoord.out ? `<p class="hint">${e.semCoord.lic} licença(s) e ${e.semCoord.out} outorga(s) do titular sem coordenada no IAT não entram no mapa.</p>` : ''}
-  ${e.entorno ? `<h4>Entorno imediato (${RAIO_EMP} m, todos os titulares)</h4><div class="cds n4">${card('Licenças vigentes', F(e.entorno.k.lic_vig))}${card('Outorgas válidas', F(e.entorno.k.out_val))}${card('Captação outorgada', F(e.entorno.k.vazao_capt_m3h), 'm³/h')}${card('Outorgas vencidas/irregulares', F((e.entorno.k.out_vencidas || 0) + (e.entorno.k.out_irreg || 0)))}</div>
-  ${e.entorno.achados.length ? e.entorno.achados.slice(0, 5).map(t => `<div class="obs">${esc(t)}</div>`).join('') : ''}` : ''}`)}
-
-${sec('Pendências e adequações sugeridas', 'Base para o plano de adequação, o escopo da Fase 2 e o orçamento', `
-  <div class="placar" style="grid-template-columns:repeat(3,1fr) 1.2fr">${[1, 2, 3].map(k => `<div style="background:${ROT[k][1]}1a;color:${ROT[k][1]}"><b>${N.filter(n => n.prior === k).length}</b><span>prioridade ${ROT[k][0].toLowerCase()}</span></div>`).join('')}<div class="g"><b>${N.length}</b><span>itens no total</span></div></div>
-  <table class="rx-tab"><tr><th>Nº</th><th>Prioridade</th><th>Tema</th><th>Situação encontrada</th><th>Adequação / serviço sugerido</th></tr>
-  ${N.map((n, i) => `<tr><td><b>${i + 1}</b><br><span class="hint">${esc(n.id)}</span></td><td><span class="rx-sw" style="background:${ROT[n.prior][1]}"></span>${ROT[n.prior][0]}${n.fase === 2 ? '<br><span class="hint">Fase 2</span>' : ''}</td><td>${esc(n.tema)}</td><td>${esc(n.achado)}</td><td>${esc(n.adequacao)}</td></tr>`).join('')}</table>
-  <p class="hint">Lista indicativa. Itens marcados como Fase 2 dependem de documentos do cliente e de vistoria técnica.</p>
-  <h4>Documentos a solicitar para a Fase 2</h4><ul class="doc">${e.docs.map(d => `<li>${esc(d)}</li>`).join('')}</ul>
-  <div class="obs"><b>Próximo passo com a CS:</b> Fase 2 – Diagnóstico Ambiental Empresarial completo (matriz CS Nível 1, com documentos, condicionantes das licenças e vistoria), índice ICMA e plano de ação 5W2H priorizado, unificado com esta Fase 1.</div>${blocoCS}`)}
-
+${sec('Licenças ambientais do titular', `IAT – SGA/SIA · ${F(e.lic.length)} registro(s)`, tl, true, 'A')}
+${sec('Outorgas de água do titular', `IAT – SIGARH · ${F(e.out.length)} registro(s)`, to, e.lic.length > 12, 'B')}
+${sec('Unidades e entorno', `Pontos declarados e situação a até ${RAIO_EMP} m da unidade principal`, `${tu}${e.semCoord.lic + e.semCoord.out ? `<p class="hint">${e.semCoord.lic} licença(s) e ${e.semCoord.out} outorga(s) sem coordenada no IAT.</p>` : ''}
+  ${e.entorno ? `<h4>Entorno de ${RAIO_EMP} m (todos os titulares)</h4><div class="nums" style="grid-template-columns:repeat(4,1fr)"><div><b>${F(e.entorno.k.lic_vig)}</b><span>licenças vigentes</span></div><div><b>${F(e.entorno.k.out_val)}</b><span>outorgas válidas</span></div><div><b>${F(e.entorno.k.vazao_capt_m3h)}</b><span>m³/h captados (outorgado)</span></div><div><b>${F((e.entorno.k.out_vencidas || 0) + (e.entorno.k.out_irreg || 0))}</b><span>outorgas vencidas/irregulares</span></div></div>
+  ${e.entorno.achados.slice(0, 4).map(t => `<div class="obs">${esc(t)}</div>`).join('')}` : ''}`, e.lic.length + e.out.length > 10, 'C')}
 ${sec('Metodologia e fontes', 'Como esta análise foi feita', `
-  <p>Os registros públicos do titular são reunidos por ${esc(e.vinculo)} e agrupados em unidades físicas (pontos a até 500 m entre si). Cada indicador segue os mesmos IDs da matriz do Diagnóstico Ambiental Empresarial CS, para que a Fase 2 parta deste resultado. Pontos usam as coordenadas declaradas pelos titulares ao IAT e podem conter erros.</p>
+  <p>Os registros públicos do titular são reunidos por ${esc(e.vinculo)} e agrupados em unidades físicas (pontos a até 500 m entre si). O ponto declarado é a coordenada informada pelo titular ao IAT. Indicadores usam os IDs da matriz do Diagnóstico Ambiental Empresarial CS; a agenda de obrigações aplica a legislação às datas públicas das licenças e outorgas.</p>
   <div class="fonte">
-   <b>IAT – SGA/SIA</b><span>Licenças ambientais: modalidade, número, atividade, emissão e validade; consulta pública do processo.</span>
-   <b>IAT – SIGARH</b><span>Outorgas e declarações de uso da água: tipo, número, vazão, corpo hídrico, bacia e vencimento.</span>
-   <b>IAT / GeoPR</b><span>Camadas geográficas de licenciamento e outorgas, consolidadas pela plataforma Licenças e Outorgas do Paraná (CS).</span>
-   <b>IBGE</b><span>Limites municipais.</span>
-   ${e.ct ? '<b>Receita Federal (CNPJ)</b><span>Razão social, CNAE, porte e endereço, quando disponíveis na Área CS.</span>' : ''}
-   <b>Legislação de referência</b><span>LC 140/2011; CONAMA 237/1997, 430/2011, 382/2006 e 436/2011; Lei 9.433/1997; Lei 12.305/2010; Lei 6.938/1981 (CTF/APP).</span>
+   <b>IAT – SGA/SIA</b><span>Licenças: modalidade, número, atividade, emissão e validade.</span>
+   <b>IAT – SIGARH</b><span>Outorgas e declarações de uso da água.</span>
+   <b>IAT – SGA-MR / SGA-IR</b><span>MTR estadual e Inventário de Resíduos: obrigação prevista; comprovação na Fase 2 (acesso do cliente).</span>
+   <b>SINIR (MMA)</b><span>MTR, DMR e Inventário Nacional de Resíduos: obrigação prevista; comprovação na Fase 2.</span>
+   <b>IBAMA – CTF/APP</b><span>RAPP, TCFA e Certificado de Regularidade: obrigação prevista; comprovação na Fase 2.</span>
+   <b>Imagem de satélite</b><span>Mapbox Satellite Streets (© Mapbox, © Maxar).</span>
+   ${e.ct ? '<b>Receita Federal</b><span>Razão social, CNAE, porte e endereço (Área CS).</span>' : ''}
   </div>
-  <p class="hint">Legenda dos selos: <b>Em acordo</b> – situação regular na base pública; <b>Atenção</b> – item a verificar ou que pode exigir adequação; <b>Em desacordo</b> – pendência identificada; <b>Pendente – Fase 2</b> – não verificável em base pública, depende de documento ou vistoria; <b>Não se aplica</b> – sem indício da obrigação para a atividade.</p>
-  <p class="hint">Limitações: homônimos ou razões sociais diferentes da mesma empresa podem ficar de fora ou entrar indevidamente; licenças sem coordenada, dispensadas ou de competência municipal podem não aparecer. Este Raio-X não substitui vistoria, análise documental, consulta a restrições territoriais (UC, APP, terras indígenas) nem o diagnóstico completo.${PF ? ' Titular pessoa física: CPF e endereço não são exibidos.' : ''}</p>
-  <div class="valida"><div class="qr">${qr(96)}</div><div><b>Conferência do relatório</b><br><span class="mono">${codigo}</span><br><span class="hint">${link ? 'Aponte a câmera para o QR code para abrir este empreendimento na plataforma.' : 'Gerado pelo agente CS a partir da base pública da plataforma.'} Base de ${esc(e.base)} · emitido em ${esc(dataHora)}.</span></div></div>
-  ${blocoCS}`)}
+  <p class="hint">Selos: <b>Em acordo</b> – regular na base pública; <b>Atenção</b> – verificar ou adequar; <b>Em desacordo</b> – pendência identificada; <b>Pendente – Fase 2</b> – depende de documento ou vistoria; <b>Não se aplica</b> – sem indício da obrigação.</p>
+  <p class="hint">Limitações: homônimos ou razões sociais diferentes podem ficar de fora ou entrar indevidamente; licenças sem coordenada, dispensadas ou municipais podem não aparecer. Não substitui vistoria, análise documental, consulta a restrições territoriais nem parecer técnico.${PF ? ' Titular pessoa física: CPF e endereço não são exibidos.' : ''}</p>
+  <div class="valida"><div class="qr">${qr(88)}</div><div><b>Conferência</b><br><span class="mono">${codigo}</span><br><span class="hint">${link ? 'O QR code abre este empreendimento na plataforma.' : ''} Base de ${esc(e.base)} · emitido em ${esc(dataHora)} · motor v${e.versao}.</span></div></div>
+  ${blocoCS}`, true, 'D')}
 </div></body></html>`;
     };
+    function counterTxt() { return 'Página " counter(page) " de " counter(pages) "'; }
     // Pré-preenchimento da Matriz de Diagnóstico Técnico CS (planilha) a partir do Raio X do Empreendimento
     R.preenchimentoMatriz = function (e) {
         const ST = { 'Conforme': 'Conforme', 'Parcial': 'Parcial', 'Não conforme': 'Não conforme', 'Verificar': 'Sem evidência', 'Sem evidência': 'Sem evidência' };
