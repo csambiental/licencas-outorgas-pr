@@ -56,11 +56,11 @@ function adicionarCamadas() {
         Object.entries(COR_OUT).map(([k, c]) => `<div class="it"><span class="pt" style="background:${c}"></span>${k}</div>`).join('') +
         '<div class="it"><span class="pt" style="background:#fff;box-shadow:0 0 0 2px #c62828"></span>Contorno vermelho: vencida/irregular · laranja: vence em 6 meses</div><div class="rot">Pontos aparecem ao aproximar o mapa</div>';
     for (const id of ['lic-vig', 'lic-venc', 'out-val', 'out-prob']) {
-        map.on('click', id, e => { e.originalEvent._pt = true; popup(e.features[0], e.lngLat); });
+        map.on('click', id, e => { if (window.modoRaioX) return; e.originalEvent._pt = true; popup(e.features[0], e.lngLat); });
         map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer');
         map.on('mouseleave', id, () => map.getCanvas().style.cursor = '');
     }
-    map.on('click', 'mun-fill', e => { if (e.originalEvent._pt) return; abrirMunicipio(e.features[0].properties.cod, false); });
+    map.on('click', 'mun-fill', e => { if (e.originalEvent._pt || window.modoRaioX) return; abrirMunicipio(e.features[0].properties.cod, false); });
     document.querySelectorAll('#camadas input[data-c]').forEach(i => i.addEventListener('change', () => map.setLayoutProperty(i.dataset.c, 'visibility', i.checked ? 'visible' : 'none')));
     document.getElementById('satelite').addEventListener('change', e => {
         if (e.target.checked) { if (!map.getSource('sat')) map.addSource('sat', { type: 'raster', url: 'mapbox://mapbox.satellite', tileSize: 256 }); map.addLayer({ id: 'sat', type: 'raster', source: 'sat' }, 'mun-fill'); }
