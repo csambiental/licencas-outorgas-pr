@@ -288,10 +288,10 @@ function popup(f, ll) {
     let h;
     if (f.layer.id.startsWith('lic')) h = `<div class="pop"><h4>${esc(p.n)}</h4><table>${lin('Atividade', p.a)}${lin('Atividade específica', p.e !== p.a ? p.e : '')}${lin('Modalidade', `${p.s} – ${p.g}`)}
         ${lin('Nº do documento', p.d)}${lin('Emissão', p.em)}${lin('Validade', p.va)}${lin('Situação', p.si)}${lin('Outorga de captação', p.oc)}${lin('Protocolo', p.p)}${lin('Localização', p.lo ? 'Aproximada – ponto da outorga de água do mesmo titular' : 'Cadastrada no licenciamento (IAT)')}</table>
-        <a href="${linkSGA(p)}" target="_blank" rel="noopener">📄 Abrir a licença no SGA (PDF) ↗</a><br><button class="btnEmp" data-nome="${esc(p.n)}" data-c="${esc(p.c)}" data-p="${esc(p.p)}" data-xy="${esc(JSON.stringify([ll.lng, ll.lat]))}">🔎 Raio X do empreendimento</button></div>`;
+        <a href="${linkSGA(p)}" target="_blank" rel="noopener">📄 Abrir a licença no SGA (PDF) ↗</a>${window.blocoEmitir ? blocoEmitir({ nome: p.n, c: p.c, p: p.p, xy: [ll.lng, ll.lat] }) : ''}</div>`;
     else h = `<div class="pop"><h4>${esc(p.nome)}</h4><table>${lin('Empreendimento', p.emp)}${lin('Tipo', p.interf || p.tipo)}${lin('Documento', p.doc)}${lin('Nº', p.num)}
         ${lin('Situação', p.situ + (p.st && p.st !== p.situ ? ` (${p.st})` : ''))}${lin('Publicação', p.pub)}${lin('Vencimento', p.venc)}${lin('Finalidade', p.fin)}
-        ${lin('Vazão máxima', p.vazao ? p.vazao + ' m³/h' : '')}${lin('Corpo hídrico / aquífero', p.corpo)}${lin('Bacia', p.bacia)}${lin('Setor', p.setor)}</table><button class="btnEmp" data-nome="${esc(p.nome)}" data-c="${esc(p.c)}" data-num="${esc(p.num || '')}" data-xy="${esc(JSON.stringify([ll.lng, ll.lat]))}">🔎 Raio X do empreendimento</button></div>`;
+        ${lin('Vazão máxima', p.vazao ? p.vazao + ' m³/h' : '')}${lin('Corpo hídrico / aquífero', p.corpo)}${lin('Bacia', p.bacia)}${lin('Setor', p.setor)}</table>${window.blocoEmitir ? blocoEmitir({ nome: p.nome, c: p.c, num: p.num, xy: [ll.lng, ll.lat] }) : ''}</div>`;
     const pop = new mapboxgl.Popup({ maxWidth: '360px' }).setLngLat(ll).setHTML(h).addTo(map);
     if (CHAVE && p.c) {
         const lic = f.layer.id.startsWith('lic');

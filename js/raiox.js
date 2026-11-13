@@ -93,7 +93,7 @@
     };
 
     const provavelPF = n => !PJ.test(n || '');
-    const ocultar = (n, op) => op && op.anonimizar && provavelPF(n) ? 'Pessoa física (nome omitido)' : n;
+    const ocultar = (n, op) => op && op.anonimizar && provavelPF(n) && !(op.cliente && R.chaveNome(n) === R.chaveNome(op.cliente)) ? 'Pessoa física (nome omitido)' : n;
     const num = s => { const v = parseFloat(String(s || '').replace(/\./g, '').replace(',', '.')); return isFinite(v) ? v : 0; };
     const dataBR = s => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s || ''); return m ? new Date(+m[3], m[2] - 1, +m[1]) : null; };
     const conta = (L, f) => L.reduce((o, x) => { const k = f(x) || '—'; o[k] = (o[k] || 0) + 1; return o; }, {});
@@ -447,7 +447,7 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         const u1 = e.unidades[0], perto = x => x.xy && u1 && dist(x.xy, u1.xy) <= 1500;
         const vista = { area: e.area, lic: e.lic.filter(perto), out: e.out.filter(perto) };
         const mapa = R.mapaURL(vista);
-        const nome = op.anonimizar && e.pf ? 'Pessoa física (nome omitido)' : e.titular;
+        const nome = e.titular;   // o titular é o próprio objeto do relatório: o nome nunca é omitido
         const kpi = (v, t, c) => `<div class="kpi ${c || ''}"><b>${fmtN(v)}</b><span>${t}</span></div>`;
         const corExp = { Alta: 'v', Média: 'a', Baixa: 'ok' }[e.exposicao];
         const ident = [['Titular', nome], ['CNPJ', e.cnpj && !e.pf ? e.cnpj : ''], ['Nome fantasia', e.ct && e.ct.nf], ['Atividade principal (CNAE)', e.ct && e.ct.cnae], ['Porte / situação', e.ct && [e.ct.porte, e.ct.sit].filter(Boolean).join(' · ')],

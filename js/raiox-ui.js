@@ -155,27 +155,32 @@
         }
         return [...new Set([...(ch || [])].map(k => k.split('|')[0]))];
     }
-    async function calcularEmp() {
-        const ref = refEmp, box = document.getElementById('empRes');
-        const fin = document.getElementById('empFin').value;
-        let so = document.getElementById('empSoMun').checked;
+    // cálculo reaproveitado pelo painel e pela emissão direta no balão
+    async function calcEmp(ref, op) {
         let cods = RaioX.provavelPF(ref.nome) ? [ref.cod] : await cdsTitular(ref.nome);
         if (!cods.includes(ref.cod)) cods.push(ref.cod);
-        if (cods.length > 40 && !so) { so = true; document.getElementById('empSoMun').checked = true; }
-        if (so) cods = [ref.cod];
+        if (cods.length > 40 && !op.soMunicipio) op.soMunicipio = true;
+        if (op.soMunicipio) cods = [ref.cod];
         let dados = await Promise.all(cods.map(c => carregarMun(c)));
-        const op = { finalidade: fin, soMunicipio: so, anonimizar: fin === 'Entrega', contatos: fin === 'Prospecção' && !!CHAVE, logo: new URL('logo.png', location.href).href };
         const anexar = async ds => { if (!CHAVE) return; for (const d of ds) { const C = await contatosMun(d.cod); if (!C) continue; const pega = (t, k) => { const i = (C[t] || {})[k]; return i && i.length ? C.r[i[0]] : null; }; d.lic.forEach(x => { if (!('ct' in x)) x.ct = pega('l', x.p); }); d.out.forEach(x => { if (!('ct' in x)) x.ct = pega('o', x.num); }); } };
         await anexar(dados);
-        if (CHAVE) {   // CNPJ do registro clicado → reúne só as unidades do mesmo CNPJ (raiz)
+        if (CHAVE) {   // CNPJ do registro clicado → só as unidades do mesmo CNPJ (raiz)
             const d0 = dados.find(d => d.cod === ref.cod), x0 = d0 && (ref.p ? d0.lic.find(x => x.p === ref.p) : d0.out.find(x => x.num === ref.num));
             if (x0 && x0.ct && x0.ct.cnpj) op.cnpj = x0.ct.cnpj;
         }
-        empRes = RaioX.empreendimento(ref, dados, MUNS, op);
-        if (empRes.unidades.length) {
-            const viz = RaioX.municipiosDaArea(RaioX.area({ tipo: 'circulo', centro: empRes.unidades[0].xy, raio: 1000 }), MUNS).filter(c => !cods.includes(c));
-            if (viz.length) { const mais = await Promise.all(viz.map(c => carregarMun(c))); await anexar(mais); dados = dados.concat(mais); empRes = RaioX.empreendimento(ref, dados, MUNS, op); }
+        let e = RaioX.empreendimento(ref, dados, MUNS, op);
+        if (e.unidades.length) {
+            const viz = RaioX.municipiosDaArea(RaioX.area({ tipo: 'circulo', centro: e.unidades[0].xy, raio: 1000 }), MUNS).filter(c => !cods.includes(c));
+            if (viz.length) { const mais = await Promise.all(viz.map(c => carregarMun(c))); await anexar(mais); dados = dados.concat(mais); e = RaioX.empreendimento(ref, dados, MUNS, op); }
         }
+        return e;
+    }
+    async function calcularEmp() {
+        const ref = refEmp, box = document.getElementById('empRes');
+        const fin = document.getElementById('empFin').value;
+        const op = { finalidade: fin, soMunicipio: document.getElementById('empSoMun').checked, anonimizar: fin === 'Entrega', contatos: fin === 'Prospecção' && !!CHAVE, logo: new URL('logo.png', location.href).href };
+        empRes = await calcEmp(ref, op);
+        if (op.soMunicipio) document.getElementById('empSoMun').checked = true;
         const e = empRes, k = e.k;
         const kp = (v, t, c) => `<div class="kpi ${c || ''}"><b>${fmt(v)}</b><span>${t}</span></div>`;
         const cor = { 'Conforme': 'ok', 'Parcial': 'vence', 'Verificar': 'vence', 'Sem evidência': 'vence', 'Não conforme': 'vencida' };
@@ -203,6 +208,59 @@
         };
     }
     window.abrirEmpreendimento = abrirEmpreendimento;
+
+    // ================================================================ EMITIR RELATÓRIO direto do balão (PJ ou PF)
+    const TIPOS_TEC = [['Posto de combustíveis', /posto|combust/i], ['Indústria', /ind[uú]stria|fabrica|usina|concret|metal|qu[ií]mic/i], ['Laticínio e agroindústria', /latic|leite|alimentos|abate|frigor|avicult|suinocult/i], ['Comércio e serviços', /com[eé]rcio|servi[cç]o|oficina|lavador|sa[uú]de|atacad|varej/i]];
+    window.blocoEmitir = d => {
+        const at = Object.entries(d).filter(([, v]) => v != null && v !== '').map(([k, v]) => `data-${k}="${esc(typeof v === 'string' ? v : JSON.stringify(v))}"`).join(' ');
+        const pf = RaioX.provavelPF(d.nome);
+        return `<div class="emitir" ${at}><div class="emT">📄 Emitir relatório${pf ? ' <span class="tag">pessoa física</span>' : ''}</div>
+            <select class="emTipo"><optgroup label="Fase 1 – dados públicos (imediato)"><option value="emp">Diagnóstico do empreendimento (Raio X)</option><option value="area1">Raio X da área – 1 km</option><option value="area3">Raio X da área – 3 km</option>${CHAVE ? '<option value="prosp">Ficha de prospecção (uso interno)</option>' : ''}</optgroup>
+            <optgroup label="Fase 2 – documentos e vistoria"><option value="tec">Abrir diagnóstico completo (relatório unificado)</option></optgroup></select>
+            <select class="emFin"><option value="Diagnóstico">Para análise técnica da CS</option><option value="Entrega">Para entregar ao cliente</option></select>
+            <div class="emB"><button class="emGo">Emitir</button><button class="emPainel">Ver no painel</button></div></div>`;
+    };
+    const janela = () => { const w = window.open('', '_blank'); if (w) w.document.write('<p style="font-family:sans-serif;padding:24px">Gerando relatório da CS…</p>'); return w; };
+    const escrever = (w, html) => { w.document.open(); w.document.write(html); w.document.close(); };
+    document.addEventListener('click', async ev => {
+        const b = ev.target.closest('.emGo, .emPainel'); if (!b) return;
+        ev.preventDefault(); ev.stopPropagation();
+        const box = b.closest('.emitir'), D = box.dataset;
+        const ref = { nome: D.nome, cod: D.c, p: D.p, num: D.num, xy: D.xy ? JSON.parse(D.xy) : null };
+        if (b.classList.contains('emPainel')) return abrirEmpreendimento(ref);
+        const tipo = box.querySelector('.emTipo').value, fin = tipo === 'prosp' ? 'Prospecção' : box.querySelector('.emFin').value;
+        const w = janela(); if (!w) return alert('Permita janelas pop-up neste site para emitir relatórios.');
+        const logo = new URL('logo.png', location.href).href;
+        try {
+            if (tipo === 'area1' || tipo === 'area3') {
+                const a = RaioX.area({ tipo: 'circulo', centro: ref.xy, raio: tipo === 'area1' ? 1000 : 3000 });
+                const dados = await Promise.all(RaioX.municipiosDaArea(a, MUNS).map(c => carregarMun(c)));
+                const op = { finalidade: fin, cliente: ref.nome, anonimizar: fin === 'Entrega', titulo: 'Raio X Ambiental da Área', logo };
+                return escrever(w, RaioX.relatorioHTML(RaioX.calcular(a, dados, MUNS, op), op));
+            }
+            const op = { finalidade: fin, anonimizar: fin === 'Entrega', contatos: fin === 'Prospecção' && !!CHAVE, logo };
+            const e = await calcEmp(ref, op);
+            if (tipo !== 'tec') return escrever(w, RaioX.relatorioEmpreendimentoHTML(e, op));
+            // abertura do diagnóstico técnico: tipologias sugeridas + pré-preenchimento da matriz
+            const atv = e.lic.map(x => `${x.a} ${x.e || ''}`).join(' | ');
+            const tip = TIPOS_TEC.filter(([, rx]) => rx.test(atv)).map(([t]) => t);
+            const pre = RaioX.preenchimentoMatriz(e);
+            const pacote = { titular: e.titular, cnpj: e.cnpj || '', pessoa: e.pf ? 'física' : 'jurídica', municipios: e.municipios, unidades: e.unidades.map(u => ({ id: u.id, municipio: u.mun, lat: +u.xy[1].toFixed(6), lon: +u.xy[0].toFixed(6) })), tipologias: tip, base: e.base, exposicao: e.exposicao, preenchimento: pre };
+            const blob = URL.createObjectURL(new Blob([JSON.stringify(pacote, null, 1)], { type: 'application/json' }));
+            const slug = e.titular.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40);
+            escrever(w, `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Fase 2 – diagnóstico completo – ${esc(e.titular)}</title><style>body{font-family:"Segoe UI",Roboto,Arial,sans-serif;max-width:760px;margin:24px auto;color:#1f2a1f;padding:0 16px}h1{color:#1b5e20;font-size:20px}h2{color:#2e7d32;font-size:15px;margin-top:22px}td{padding:4px 8px;border-bottom:1px solid #eef1ec;font-size:13px;vertical-align:top}td:first-child{color:#5f6b5f;width:38%}code{background:#f5f7f4;padding:2px 6px;border-radius:4px}a.b{display:inline-block;margin-top:8px;padding:8px 14px;background:#2e7d32;color:#fff;border-radius:6px;text-decoration:none}li{margin:6px 0;font-size:13px}</style></head><body>
+<img src="${esc(logo)}" style="height:48px"><h1>Fase 2 – abertura do diagnóstico completo</h1><p style="font-size:13px;color:#5f6b5f">A Fase 1 (dados públicos) já está pronta. Na Fase 2, documentos, informações complementares e vistoria entram na matriz do cliente, e o relatório é reemitido como um único relatório unificado.</p>
+<table><tr><td>Titular</td><td>${esc(e.titular)}</td></tr>${e.cnpj ? `<tr><td>CNPJ</td><td>${esc(e.cnpj)}</td></tr>` : ''}<tr><td>Pessoa</td><td>${e.pf ? 'Física (análise restrita ao município)' : 'Jurídica'}</td></tr><tr><td>Município(s)</td><td>${esc(e.municipios.join(', '))}</td></tr>
+<tr><td>Unidades</td><td>${e.unidades.map(u => `${u.id} – ${esc(u.mun)} (${u.xy[1].toFixed(5)}, ${u.xy[0].toFixed(5)})`).join('<br>') || 'sem coordenada'}</td></tr><tr><td>Tipologias sugeridas</td><td>${esc(tip.join(', ') || 'só requisitos gerais')}</td></tr>
+<tr><td>Raio X</td><td>Base de ${esc(e.base)} · exposição preliminar ${esc(e.exposicao)} · ${pre.linhas.length} requisito(s) pré-preenchidos, ${pre.pendentes.length} pendência(s) para a vistoria</td></tr></table>
+<a class="b" href="${blob}" download="diagnostico_${slug}.json">⬇ Baixar pré-preenchimento da matriz</a>
+<h2>Próximos passos</h2><ol><li>No repositório privado <b>diagnosticos-cs</b>: Actions → <b>Novo cliente (Raio X + matriz)</b> → Run workflow.</li>
+<li>Razão social: <code>${esc(e.titular)}</code> · pasta: <code>${slug}</code> · tipologias: <code>${esc(tip.join(','))}</code>${e.pf ? ` · município: <code>${esc(e.municipios[0] || '')}</code>` : ''}</li>
+<li>Empresa com mais de uma unidade: uma pasta por unidade (ex.: <code>${slug}/${(e.unidades[0] ? e.unidades[0].mun : 'unidade').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}</code>).</li>
+<li>Enviar os documentos do cliente para <code>clientes/&lt;pasta&gt;/documentos/</code> e registrá-los na aba <b>Documentos</b> da matriz; preencher a aba <b>Informações complementares</b> e, após a vistoria, a aba <b>Matriz</b>.</li><li>Ao subir a matriz, o <b>relatório unificado</b> (Fase 1 + Fase 2) é gerado automaticamente.</li></ol></body></html>`);
+        } catch (er) { escrever(w, `<p style="font-family:sans-serif;padding:24px">Não foi possível gerar o relatório: ${esc(er.message)}</p>`); }
+    });
+
 
     // abrir direto por link: ?raiox=lat,lon,raio
     map.on('load', () => {
