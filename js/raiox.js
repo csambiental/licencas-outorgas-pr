@@ -209,8 +209,10 @@
         const cont = r.area.contorno.length > 120 ? r.area.contorno.filter((_, i, a) => i % Math.ceil(a.length / 120) === 0).concat([r.area.contorno[0]]) : r.area.contorno;
         const caminho = `path-3+c62828-0.9+c62828-0.07(${encodeURIComponent(polyline(cont))})`;
         const sat = /satellite/.test(estilo || ''), caminhoS = sat ? caminho.replace('path-3+c62828-0.9+c62828-0.07', 'path-3+ffeb3b-1+ffeb3b-0.06') : caminho;
+        const corT = x => /Vencida|Irregular/.test(x.situ) ? 'c62828' : x.situ === 'Vence em até 6 meses' ? 'e65100' : '0277bd';
+        const terc = (r.terceiros || []).filter(x => x.xy && x.n <= 99).slice(0, 40).reverse().map(x => `pin-s-${x.n}+${corT(x)}(${f5(x.xy[0])},${f5(x.xy[1])})`);
         const dest = r.area.destaque ? [`pin-l-industry+d50000(${f5(r.area.destaque[0])},${f5(r.area.destaque[1])})`] : [];
-        const mk = n => `https://api.mapbox.com/styles/v1/mapbox/${estilo || 'light-v11'}/static/${[caminhoS].concat(P.slice(0, n).reverse().map(p => `pin-s+${p[2]}(${f5(p[1][0])},${f5(p[1][1])})`), dest).join(',')}/auto/${w}x${h}@2x?padding=${r.area.destaque ? 24 : 40}&access_token=${MAPBOX_TOKEN}`;
+        const mk = n => `https://api.mapbox.com/styles/v1/mapbox/${estilo || 'light-v11'}/static/${[caminhoS].concat(P.slice(0, n).reverse().map(p => `pin-s+${p[2]}(${f5(p[1][0])},${f5(p[1][1])})`), terc, dest).join(',')}/auto/${w}x${h}@2x?padding=${r.area.destaque ? 24 : 40}&access_token=${MAPBOX_TOKEN}`;
         let n = Math.min(P.length, 250), u = mk(n);
         while (u.length > 8000 && n > 0) { n -= 10; u = mk(Math.max(n, 0)); }
         return { url: u, pontos: Math.max(n, 0), total: P.length };
@@ -218,13 +220,14 @@
     // Croqui SVG sem mapa de fundo (sempre funciona, inclusive offline e no PDF)
     R.croquiSVG = function (r, w, h) {
         w = w || 900; h = h || 520;
-        const P = pontosMapa(r), c = r.area.contorno, pts = c.concat(P.map(p => p[1]));
+        const P = pontosMapa(r), c = r.area.contorno, T = (r.terceiros || []).filter(x => x.xy), pts = c.concat(P.map(p => p[1]), T.map(x => x.xy));
         const kx = KX(r.area.centro[1]);
         let x0 = Math.min(...pts.map(p => p[0])), x1 = Math.max(...pts.map(p => p[0])), y0 = Math.min(...pts.map(p => p[1])), y1 = Math.max(...pts.map(p => p[1]));
         const Wm = (x1 - x0) * kx || 1, Hm = (y1 - y0) * KY || 1, esc = Math.min((w - 80) / Wm, (h - 80) / Hm);
         const X = lon => 40 + ((lon - x0) * kx) * esc + ((w - 80) - Wm * esc) / 2, Y = lat => h - 40 - ((lat - y0) * KY) * esc - ((h - 80) - Hm * esc) / 2;
         const barra = [100, 200, 500, 1000, 2000, 5000, 10000].find(v => v * esc >= 80) || 10000;
-        const ptsSvg = P.slice().reverse().map(p => `<circle cx="${X(p[1][0]).toFixed(1)}" cy="${Y(p[1][1]).toFixed(1)}" r="4" fill="#${p[2]}" stroke="#fff" stroke-width="1"/>`).join('');
+        const tSvg = T.slice().reverse().map(x => `<g transform="translate(${X(x.xy[0]).toFixed(1)},${Y(x.xy[1]).toFixed(1)})"><circle r="8" fill="#${/Vencida|Irregular/.test(x.situ) ? 'c62828' : x.situ === 'Vence em até 6 meses' ? 'e65100' : '0277bd'}" stroke="#fff" stroke-width="1.5"/><text y="3.5" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">${x.n}</text></g>`).join('');
+        const ptsSvg = tSvg + P.slice().reverse().map(p => `<circle cx="${X(p[1][0]).toFixed(1)}" cy="${Y(p[1][1]).toFixed(1)}" r="4" fill="#${p[2]}" stroke="#fff" stroke-width="1"/>`).join('');
         return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;border:1px solid #dfe5dc;border-radius:6px;background:#fafbf9" role="img" aria-label="Croqui da área">
 <polygon points="${c.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(' ')}" fill="#c62828" fill-opacity="0.06" stroke="#c62828" stroke-width="2"/>${ptsSvg}
 ${r.area.destaque ? `<path transform="translate(${X(r.area.destaque[0]).toFixed(1)},${Y(r.area.destaque[1]).toFixed(1)})" d="M0 0C-9 -12 -11 -16 -11 -21A11 11 0 0 1 11 -21C11 -16 9 -12 0 0Z" fill="#d50000" stroke="#fff" stroke-width="2"/><circle cx="${X(r.area.destaque[0]).toFixed(1)}" cy="${(Y(r.area.destaque[1]) - 21).toFixed(1)}" r="4" fill="#fff"/>` : ''}<circle cx="${X(r.area.centro[0])}" cy="${Y(r.area.centro[1])}" r="5" fill="none" stroke="#1f2a1f" stroke-width="1.5"/><path d="M${X(r.area.centro[0]) - 9} ${Y(r.area.centro[1])}h18M${X(r.area.centro[0])} ${Y(r.area.centro[1]) - 9}v18" stroke="#1f2a1f" stroke-width="1.2"/>
@@ -430,7 +433,9 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         if (U.length) {
             const a = R.area({ tipo: 'circulo', centro: U[0].decl.xy, raio: RAIO_EMP });
             const r1 = R.calcular(a, dados.filter(d => R.municipiosDaArea(a, munGeo).includes(d.cod)), munGeo, {});
-            entorno = { k: r1.k, achados: r1.achados.filter(x => x.risco).map(x => x.t) };
+            const terc = r1.out.filter(x => R.chaveNome(x.nome) !== chave).sort((a, b) => a.dm - b.dm).slice(0, 60)
+                .map((x, i) => ({ n: i + 1, nome: x.nome, emp: x.emp, tipo: x.tipo, interf: x.interf, doc: x.doc, num: x.num, situ: x.situ, venc: x.venc, vazao: x.vazao, fin: x.fin, corpo: x.corpo, xy: x.xy, dm: x.dm }));
+            entorno = { k: r1.k, achados: r1.achados.filter(x => x.risco).map(x => x.t), out: terc };
         }
         const munNomes = [...new Set(lic.concat(out).map(x => x.mun))];
         const base = (dados.find(d => d.cod === ref.cod) || dados[0] || {}).atualizado || '';
@@ -485,7 +490,8 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         doM(add, 'FLO-03', 'Fora de UC/zona de amortecimento e APP preservada');
         if (e.entorno) {
             const k = e.entorno.k, pr = (k.out_vencidas || 0) + (k.out_irreg || 0);
-            add('Outorgas vencidas ou irregulares no entorno', pr ? 'at' : 'ok', `${pr} outorga(s) de terceiros vencida(s)/irregular(es) a até ${RAIO_EMP} m`);
+            const pT = (e.entorno.out || []).filter(x => /Vencida|Irregular/.test(x.situ));
+            add('Outorgas vencidas ou irregulares no entorno', pT.length ? 'at' : 'ok', pT.length ? `${pT.length} outorga(s) de terceiros vencida(s)/irregular(es) a até ${RAIO_EMP} m – nº ${pT.map(x => x.n).join(', ')} no mapa` : `Nenhuma outorga de terceiros vencida ou irregular a até ${RAIO_EMP} m`);
             add('Pressão sobre a água no entorno', k.vazao_capt_m3h >= 50 ? 'at' : 'ok', `${k.out_val} outorga(s) válida(s), ${String(k.vazao_capt_m3h).replace('.', ',')} m³/h de captação outorgada a até ${RAIO_EMP} m`);
         } else add('Entorno imediato', 'na', 'Sem unidade georreferenciada para calcular o entorno');
         return G;
@@ -533,12 +539,35 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         return A.sort((a, b) => ord(a) - ord(b));
     };
 
+    // URLs das imagens de satélite do relatório (para embutir como data URI antes de gerar o HTML)
+    function vistaEmp(e) { const u1 = e.unidades[0], perto = x => x.xy && u1 && dist(x.xy, u1.decl.xy) <= RAIO_EMP * 1.4;
+        return { area: e.area, lic: e.lic.filter(perto), out: e.out.filter(perto), terceiros: (e.entorno && e.entorno.out) || [] }; }
+    R.imagensEmpreendimento = function (e) {
+        const u1 = e.unidades[0];
+        return { mapa: u1 ? R.mapaURL(vistaEmp(e), 760, 600, 'satellite-streets-v12').url : null,
+                 capa: R.mapaURL({ area: e.area, lic: [], out: [] }, 640, 900, 'satellite-streets-v12').url };
+    };
+    // baixa as imagens e devolve data URIs (navegador ou Node 18+); falhas viram null e o relatório usa o croqui
+    R.embutirImagens = async function (e) {
+        const U = R.imagensEmpreendimento(e), out = {};
+        for (const [k, u] of Object.entries(U)) {
+            if (!u) continue;
+            try {
+                const r = await fetch(u); if (!r.ok) throw new Error(r.status);
+                const tipo = r.headers.get('content-type') || 'image/png', buf = new Uint8Array(await r.arrayBuffer());
+                let b64;
+                if (typeof Buffer !== 'undefined') b64 = Buffer.from(buf).toString('base64');
+                else { let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000)); b64 = btoa(s); }
+                out[k] = `data:${tipo};base64,${b64}`;
+            } catch (er) { out[k] = null; }
+        }
+        return out;
+    };
     R.relatorioEmpreendimentoHTML = function (e, op) {
         op = op || {};
         const agora = new Date(), G = R.checklistEmpreendimento(e), N = R.pendenciasEmpreendimento(e), AG = R.agendaEmpreendimento(e, agora), todos = G.flatMap(g => g.itens);
         const cont = s => todos.filter(i => i.st === s).length, avaliados = todos.filter(i => i.st !== 'na' && i.st !== 'pd').length;
-        const u1 = e.unidades[0], perto = x => x.xy && u1 && dist(x.xy, u1.decl.xy) <= RAIO_EMP * 1.4;
-        const vista = { area: e.area, lic: e.lic.filter(perto), out: e.out.filter(perto) };
+        const u1 = e.unidades[0], vista = vistaEmp(e);
         const mapaPts = R.mapaURL(vista, 760, 600, 'satellite-streets-v12'), mapaSat = R.mapaURL({ area: e.area, lic: [], out: [] }, 640, 900, 'satellite-streets-v12');
         const dataHora = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }).replace(',', '');
         const nome = e.titular, PF = e.pf, mun = e.municipios.join(', ') || (u1 && u1.mun) || '–';
@@ -586,7 +615,7 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         const fin = { 'Prospecção': 'Uso interno CS – prospecção', 'Diagnóstico': 'Análise técnica CS', 'Entrega': 'Entrega ao cliente' }[e.finalidade] || e.finalidade;
         const logo = esc(op.logo || 'logo.png');
         const blocoCS = `<div class="csb"><img src="${logo}" alt="CS Consultoria Ambiental"><div><b>CS Consultoria Ambiental</b><br><span>Diagnóstico Ambiental Empresarial · licenciamento, outorgas, resíduos, efluentes e ESG · Londrina/PR</span></div></div>`;
-        const legenda = u1 ? `<div class="leg"><i class="pin"></i>ponto declarado ao IAT (${esc(u1.decl.fonte)}) · <i class="ci"></i>entorno de ${RAIO_EMP} m · <i style="background:#2e7d32"></i>licença vigente <i style="background:#e65100"></i>vence em 6 meses <i style="background:#9e9e9e"></i>vencida <i style="background:#0277bd"></i>outorga</div>` : '';
+        const legenda = u1 ? `<div class="leg"><i class="pin"></i>ponto declarado ao IAT (${esc(u1.decl.fonte)}) · <i class="ci"></i>entorno de ${RAIO_EMP} m · <i style="background:#2e7d32"></i>licença vigente <i style="background:#e65100"></i>vence em 6 meses <i style="background:#9e9e9e"></i>vencida <i style="background:#0277bd"></i>outorga do titular · <b>nº</b> outorgas de terceiros (azul válida, laranja vence em 6 meses, vermelho vencida/irregular – lista no Anexo C)</div>` : '';
         return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Raio-X do Empreendimento – ${esc(nome)}</title>
 <style>
  @page { size: A4; margin: 20mm 14mm 18mm;
@@ -601,7 +630,7 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
  .pg { break-before: page; } .cont { margin-top: 8mm; }
  @media screen { .pg, .cont { padding: 12mm 14mm 8mm; } .pg { border-top: 10px solid #e9eeeb; } .cont { margin-top: 0; } }
  .capa { height: 297mm; color: #fff; display: flex; flex-direction: column; padding: 18mm 16mm 14mm; overflow: hidden;
-   background: linear-gradient(160deg, rgba(20,46,32,.93), rgba(31,73,51,.78) 55%, rgba(20,46,32,.96)), url("${esc(mapaSat.url)}") center/cover, #1f4933; }
+   background: linear-gradient(160deg, rgba(20,46,32,.93), rgba(31,73,51,.78) 55%, rgba(20,46,32,.96)), url("${(op.imgs && op.imgs.capa) || mapaSat.url.replace(/["\\]/g, '')}") center/cover, #1f4933; }
  .capa .topo { display: flex; justify-content: space-between; align-items: center; } .capa .topo img { height: 52px; background: #fff; border-radius: 10px; padding: 6px 10px; }
  .capa .data { background: rgba(0,0,0,.35); border-radius: 999px; padding: 6px 14px; font-size: 10pt; }
  .capa .meio { margin: auto 0; } .capa .kick { letter-spacing: .3em; font-size: 9.5pt; font-weight: 700; color: #83bb4e; }
@@ -664,7 +693,7 @@ ${sec('Síntese executiva', 'Onde está, como está e o que fazer agora', `
    ${card('Atividade', esc((e.ct && e.ct.cnae) || (u1 && u1.ativ[0]) || '–'), e.ct && e.ct.porte ? esc(e.ct.porte) : '')}
    ${card('Ponto declarado', u1 ? `<span class="mono">${u1.decl.xy[1].toFixed(5)}, ${u1.decl.xy[0].toFixed(5)}</span>` : '–', u1 ? `${esc(u1.mun)} · <a href="https://www.google.com/maps/@${u1.decl.xy[1].toFixed(6)},${u1.decl.xy[0].toFixed(6)},400m/data=!3m1!1e3" target="_blank" rel="noopener">satélite ↗</a>` : '')}
    ${contato ? card('Contato (uso interno)', esc(contato), '', 'l3') : ''}</div>
-  <div class="sint"><div>${u1 ? `<img class="mapa" src="${esc(mapaPts.url)}" alt="Imagem de satélite do entorno de ${RAIO_EMP} m" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div style="display:none">${R.croquiSVG(vista, 760, 600)}</div>${legenda}` : '<p class="hint">Sem registro do titular com coordenada – localização a confirmar.</p>'}</div>
+  <div class="sint"><div>${u1 ? `<img class="mapa" src="${esc((op.imgs && op.imgs.mapa) || mapaPts.url)}" alt="Imagem de satélite do entorno de ${RAIO_EMP} m" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div style="display:none">${R.croquiSVG(vista, 760, 600)}</div>${legenda}` : '<p class="hint">Sem registro do titular com coordenada – localização a confirmar.</p>'}</div>
    <div><div class="exp" style="background:${expCor}"><span>Exposição legal preliminar</span><b>${esc(e.exposicao)}</b><small>${cont('no')} item(ns) em desacordo · ${cont('at')} em atenção · ${cont('pd')} a comprovar na Fase 2</small></div>
     <div class="nums"><div><b>${F(e.k.lic_vig)}</b><span>licenças vigentes</span></div><div class="${e.k.lic_venc6 ? 'lj' : ''}"><b>${F(e.k.lic_venc6)}</b><span>vencem em até 6 meses</span></div>
      <div><b>${F(e.k.out_val)}</b><span>outorgas válidas</span></div><div class="${agCont('no') ? 'vm' : agCont('at') ? 'lj' : ''}"><b>${F(agCont('no') + agCont('at'))}</b><span>prazos vencidos ou próximos</span></div></div>
@@ -693,7 +722,10 @@ ${sec('Licenças ambientais do titular', `IAT – SGA/SIA · ${F(e.lic.length)} 
 ${sec('Outorgas de água do titular', `IAT – SIGARH · ${F(e.out.length)} registro(s)`, to, e.lic.length > 12, 'B')}
 ${sec('Unidades e entorno', `Pontos declarados e situação a até ${RAIO_EMP} m da unidade principal`, `${tu}${e.semCoord.lic + e.semCoord.out ? `<p class="hint">${e.semCoord.lic} licença(s) e ${e.semCoord.out} outorga(s) sem coordenada no IAT.</p>` : ''}
   ${e.entorno ? `<h4>Entorno de ${RAIO_EMP} m (todos os titulares)</h4><div class="nums" style="grid-template-columns:repeat(4,1fr)"><div><b>${F(e.entorno.k.lic_vig)}</b><span>licenças vigentes</span></div><div><b>${F(e.entorno.k.out_val)}</b><span>outorgas válidas</span></div><div><b>${F(e.entorno.k.vazao_capt_m3h)}</b><span>m³/h captados (outorgado)</span></div><div><b>${F((e.entorno.k.out_vencidas || 0) + (e.entorno.k.out_irreg || 0))}</b><span>outorgas vencidas/irregulares</span></div></div>
-  ${e.entorno.achados.slice(0, 4).map(t => `<div class="obs">${esc(t)}</div>`).join('')}` : ''}`, e.lic.length + e.out.length > 10, 'C')}
+  <h4>Outorgas de terceiros a até ${RAIO_EMP} m (nº = ponto no mapa da síntese)</h4>
+  ${tab(['Nº', 'Distância', 'Titular', 'Tipo / finalidade', 'Documento', 'Vazão (m³/h)', 'Vencimento'], (e.entorno.out || []).map(x => [`<b>${x.n}</b>`, `${F(x.dm)} m`, esc(ocultar(x.nome, op)) + (x.emp ? `<br><span class="hint">${esc(x.emp)}</span>` : ''),
+     `${esc(x.interf || x.tipo)}${x.fin ? `<br><span class="hint">${esc(x.fin)}</span>` : ''}`, `<span class="mono">${esc(x.num || '–')}</span><br><span class="hint">${esc(x.doc || '')}</span>`, esc(x.vazao || '–'), /Irregular/.test(x.situ) ? '<b class="vm">irregular</b>' : venc(x.venc)]), 'Nenhuma outorga de terceiros no raio.')}
+  ${e.entorno.achados.slice(0, 3).map(t => `<div class="obs">${esc(t)}</div>`).join('')}` : ''}`, true, 'C')}
 ${sec('Metodologia e fontes', 'Como esta análise foi feita', `
   <p>Os registros públicos do titular são reunidos por ${esc(e.vinculo)} e agrupados em unidades físicas (pontos a até 500 m entre si). O ponto declarado é a coordenada informada pelo titular ao IAT. Indicadores usam os IDs da matriz do Diagnóstico Ambiental Empresarial CS; a agenda de obrigações aplica a legislação às datas públicas das licenças e outorgas.</p>
   <div class="fonte">

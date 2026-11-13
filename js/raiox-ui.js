@@ -198,7 +198,7 @@
             <div class="lista">${e.unidades.map(u => `<div class="item res" data-xy="${esc(JSON.stringify(u.decl.xy))}"><div class="n">${u.id} · ${esc(u.mun)}</div><div class="m">${u.lic} licença(s) · ${u.out} outorga(s)${u.dm != null ? ` · ${fmt(u.dm)} m do ponto` : ''}</div><div class="m">${esc(u.ativ.slice(0, 2).join('; '))}</div></div>`).join('') || '<p class="rot">Sem coordenadas.</p>'}</div>
             <h3>Escopo sugerido para o diagnóstico</h3><ol class="top">${e.escopo.map(x => `<li>${esc(x.servico)}</li>`).join('')}</ol>`;
         box.querySelectorAll('[data-xy]').forEach(b => b.onclick = () => map.flyTo({ center: JSON.parse(b.dataset.xy), zoom: 16 }));
-        document.getElementById('empRel').onclick = () => { const w = window.open('', '_blank'); if (!w) return alert('Permita janelas pop-up para abrir o relatório.'); w.document.open(); w.document.write(RaioX.relatorioEmpreendimentoHTML(e, op)); w.document.close(); };
+        document.getElementById('empRel').onclick = async () => { const w = window.open('', '_blank'); if (!w) return alert('Permita janelas pop-up para abrir o relatório.'); w.document.write('<p style="font-family:sans-serif;padding:24px">Gerando relatório da CS…</p>'); op.imgs = await RaioX.embutirImagens(e); w.document.open(); w.document.write(RaioX.relatorioEmpreendimentoHTML(e, op)); w.document.close(); };
         document.getElementById('empCsv').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([RaioX.csvEmpreendimento(e)], { type: 'text/csv;charset=utf-8' })); a.download = `raiox_${e.titular.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\W+/g, '_').slice(0, 40)}.csv`; a.click(); };
         document.getElementById('empArea').onclick = () => { if (!e.unidades.length) return; abrir(); centro(e.unidades[0].decl.xy); };
         document.getElementById('empAg').onclick = async () => {
@@ -246,7 +246,7 @@
             }
             const op = { finalidade: fin, anonimizar: fin === 'Entrega', contatos: fin === 'Prospecção' && !!CHAVE, logo, link: linkEmp(ref) };
             const e = await calcEmp(ref, op);
-            if (tipo !== 'tec') return escrever(w, RaioX.relatorioEmpreendimentoHTML(e, op));
+            if (tipo !== 'tec') { op.imgs = await RaioX.embutirImagens(e); return escrever(w, RaioX.relatorioEmpreendimentoHTML(e, op)); }
             // abertura do diagnóstico técnico: tipologias sugeridas + pré-preenchimento da matriz
             const atv = e.lic.map(x => `${x.a} ${x.e || ''}`).join(' | ');
             const tip = TIPOS_TEC.filter(([, rx]) => rx.test(atv)).map(([t]) => t);

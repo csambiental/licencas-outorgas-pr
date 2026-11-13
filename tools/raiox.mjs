@@ -142,6 +142,8 @@ if (MODO_EMP) {
     try { op.qrcode = require(path.join(AQUI, '..', 'js', 'vendor', 'qrcode.js')); } catch (e) { }
     const q = new URLSearchParams({ emp: ref.nome, m: ref.cod || '' }); if (ref.xy) q.set('xy', ref.xy.map(v => v.toFixed(5)).join(','));
     op.link = `https://csambiental.github.io/licencas-outorgas-pr/?${q}`;
+    op.imgs = await RaioX.embutirImagens(r);
+    if (!op.imgs.mapa) console.error('Aviso: imagem de satélite indisponível (sem acesso ao Mapbox); o relatório usa o croqui.');
     fs.writeFileSync(path.join(pasta, 'relatorio.html'), RaioX.relatorioEmpreendimentoHTML(r, op));
     fs.writeFileSync(path.join(pasta, 'empreendimento.csv'), RaioX.csvEmpreendimento(r));
     fs.writeFileSync(path.join(pasta, 'preenchimento_matriz.json'), JSON.stringify(RaioX.preenchimentoMatriz(r), null, 1));
