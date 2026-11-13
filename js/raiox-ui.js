@@ -178,7 +178,7 @@
     async function calcularEmp() {
         const ref = refEmp, box = document.getElementById('empRes');
         const fin = document.getElementById('empFin').value;
-        const op = { finalidade: fin, soMunicipio: document.getElementById('empSoMun').checked, anonimizar: fin === 'Entrega', contatos: fin === 'Prospecção' && !!CHAVE, logo: new URL('logo.png', location.href).href };
+        const op = { finalidade: fin, soMunicipio: document.getElementById('empSoMun').checked, anonimizar: fin === 'Entrega', contatos: fin === 'Prospecção' && !!CHAVE, logo: new URL('logo.png', location.href).href, link: linkEmp(ref) };
         empRes = await calcEmp(ref, op);
         if (op.soMunicipio) document.getElementById('empSoMun').checked = true;
         const e = empRes, k = e.k;
@@ -208,6 +208,12 @@
         };
     }
     window.abrirEmpreendimento = abrirEmpreendimento;
+    // link público do empreendimento (QR code do relatório): reabre o mesmo Raio-X na plataforma
+    function linkEmp(ref) {
+        const q = new URLSearchParams({ emp: ref.nome, m: ref.cod || '' });
+        if (ref.p) q.set('p', ref.p); if (ref.num) q.set('num', ref.num); if (ref.xy) q.set('xy', ref.xy.map(v => (+v).toFixed(5)).join(','));
+        return `${location.origin}${location.pathname}?${q}`;
+    }
 
     // ================================================================ EMITIR RELATÓRIO direto do balão (PJ ou PF)
     const TIPOS_TEC = [['Posto de combustíveis', /posto|combust/i], ['Indústria', /ind[uú]stria|fabrica|usina|concret|metal|qu[ií]mic/i], ['Laticínio e agroindústria', /latic|leite|alimentos|abate|frigor|avicult|suinocult/i], ['Comércio e serviços', /com[eé]rcio|servi[cç]o|oficina|lavador|sa[uú]de|atacad|varej/i]];
@@ -238,7 +244,7 @@
                 const op = { finalidade: fin, cliente: ref.nome, anonimizar: fin === 'Entrega', titulo: 'Raio X Ambiental da Área', logo };
                 return escrever(w, RaioX.relatorioHTML(RaioX.calcular(a, dados, MUNS, op), op));
             }
-            const op = { finalidade: fin, anonimizar: fin === 'Entrega', contatos: fin === 'Prospecção' && !!CHAVE, logo };
+            const op = { finalidade: fin, anonimizar: fin === 'Entrega', contatos: fin === 'Prospecção' && !!CHAVE, logo, link: linkEmp(ref) };
             const e = await calcEmp(ref, op);
             if (tipo !== 'tec') return escrever(w, RaioX.relatorioEmpreendimentoHTML(e, op));
             // abertura do diagnóstico técnico: tipologias sugeridas + pré-preenchimento da matriz
@@ -262,6 +268,14 @@
     });
 
 
+    // abrir direto por link: ?emp=<titular>&m=<município>[&p|num][&xy=lon,lat] (QR code do Raio-X do Empreendimento)
+    map.on('load', () => {
+        const q = new URLSearchParams(location.search), nome = q.get('emp');
+        if (!nome) return;
+        const ref = { nome, cod: q.get('m'), p: q.get('p') || undefined, num: q.get('num') || undefined, xy: q.get('xy') ? q.get('xy').split(',').map(Number) : null };
+        const tenta = () => { if (!MUNS) return setTimeout(tenta, 300); if (ref.xy) map.jumpTo({ center: ref.xy, zoom: 15 }); abrirEmpreendimento(ref); };
+        tenta();
+    });
     // abrir direto por link: ?raiox=lat,lon,raio
     map.on('load', () => {
         const q = new URLSearchParams(location.search).get('raiox');

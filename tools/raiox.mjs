@@ -138,6 +138,10 @@ fs.mkdirSync(pasta, { recursive: true });
 const logo = path.join(AQUI, '..', 'logo.png');
 op.logo = fs.existsSync(logo) ? 'data:image/png;base64,' + fs.readFileSync(logo).toString('base64') : '';
 if (MODO_EMP) {
+    // QR code e link de conferência apontam para o mesmo empreendimento na plataforma pública
+    try { op.qrcode = require(path.join(AQUI, '..', 'js', 'vendor', 'qrcode.js')); } catch (e) { }
+    const q = new URLSearchParams({ emp: ref.nome, m: ref.cod || '' }); if (ref.xy) q.set('xy', ref.xy.map(v => v.toFixed(5)).join(','));
+    op.link = `https://csambiental.github.io/licencas-outorgas-pr/?${q}`;
     fs.writeFileSync(path.join(pasta, 'relatorio.html'), RaioX.relatorioEmpreendimentoHTML(r, op));
     fs.writeFileSync(path.join(pasta, 'empreendimento.csv'), RaioX.csvEmpreendimento(r));
     fs.writeFileSync(path.join(pasta, 'preenchimento_matriz.json'), JSON.stringify(RaioX.preenchimentoMatriz(r), null, 1));

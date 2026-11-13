@@ -5,7 +5,7 @@
 (function (raiz) {
     'use strict';
     const R = {};
-    const VERSAO = '1.1';
+    const VERSAO = '1.2';
     const MAPBOX_TOKEN = 'pk.eyJ1IjoiY3NhbWJpZW50YWwiLCJhIjoiY205MWk4eHU4MDE3czJxcHNqamR4emd5aiJ9.e8K-ENRHJwXTz_FGGwYExg';
     const SGA = 'https://www.sga.pr.gov.br/sga-iap/consultarProcessoLicenciamento.do?action=exibirDadosPublicoLicenca&ucsChamador=carregarInterfaceInicial';
     const PJ = /\b(LTDA|S\.?\s?A\.?|S\/A|ME|EPP|EIRELI|CIA|COMPANHIA|COOPERATIVA|COOP|ASSOCIA[CÇ][AÃ]O|SINDICATO|INSTITUTO|FUNDA[CÇ][AÃ]O|PREFEITURA|MUNIC[IÍ]PIO|ESTADO|SECRETARIA|SERVI[CÇ]O|SANEAMENTO|SANEPAR|COPEL|IND[UÚ]STRIA|COM[EÉ]RCIO|AGRO|EMPREENDIMENTOS|INCORPORA|CONSTRU|TRANSPORT|HOSPITAL|IGREJA|CONDOM[IÍ]NIO|UNIVERSIDADE|FACULDADE|COL[EÉ]GIO|ESCOLA|POSTO|AUTO|PARTICIPA[CÇ][OÕ]ES|HOLDING|GRUPO|CENTRO|CLUBE|LOTEAMENTO|MINERA|CER[AÂ]MICA|FRIGOR|LATIC|USINA|DESTILARIA|ENERGIA|TELECOM|LOG[IÍ]STICA|DISTRIBUIDORA|ATACAD|SUPERMERCADO|MERCADO|FARM|LABORAT|CL[IÍ]NICA)\b/i;
@@ -202,12 +202,12 @@
         for (const [lon, lat] of pts) { const a = Math.round(lat * 1e5), b = Math.round(lon * 1e5); s += enc(a - pl) + enc(b - pn); pl = a; pn = b; }
         return s;
     }
-    R.mapaURL = function (r, w, h) {
+    R.mapaURL = function (r, w, h, estilo) {
         w = w || 900; h = h || 520;
         const P = pontosMapa(r), f5 = v => v.toFixed(5);
         const cont = r.area.contorno.length > 120 ? r.area.contorno.filter((_, i, a) => i % Math.ceil(a.length / 120) === 0).concat([r.area.contorno[0]]) : r.area.contorno;
         const caminho = `path-3+c62828-0.9+c62828-0.07(${encodeURIComponent(polyline(cont))})`;
-        const mk = n => `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/${[caminho].concat(P.slice(0, n).reverse().map(p => `pin-s+${p[2]}(${f5(p[1][0])},${f5(p[1][1])})`)).join(',')}/auto/${w}x${h}@2x?padding=40&access_token=${MAPBOX_TOKEN}`;
+        const mk = n => `https://api.mapbox.com/styles/v1/mapbox/${estilo || 'light-v11'}/static/${[caminho].concat(P.slice(0, n).reverse().map(p => `pin-s+${p[2]}(${f5(p[1][0])},${f5(p[1][1])})`)).join(',')}/auto/${w}x${h}@2x?padding=40&access_token=${MAPBOX_TOKEN}`;
         let n = Math.min(P.length, 250), u = mk(n);
         while (u.length > 8000 && n > 0) { n -= 10; u = mk(Math.max(n, 0)); }
         return { url: u, pontos: Math.max(n, 0), total: P.length };
@@ -441,48 +441,206 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         };
     };
 
+    // ---------------------------------------------------------------- Raio-X do Empreendimento – documento inicial (padrão visual do Raio-X do imóvel rural)
+    const RX_ST = { ok: ['✓', 'Em acordo', 'ok'], at: ['!', 'Atenção', 'at'], no: ['✕', 'Em desacordo', 'no'], pd: ['…', 'Pendente – Fase 2', 'pd'], na: ['–', 'Não se aplica', 'na'] };
+    const stDe = m => !m ? 'na' : m.st === 'Conforme' ? 'ok' : m.st === 'Não conforme' ? 'no' : m.natureza === 'Pendente' ? 'pd' : 'at';
+    // código de conferência (FNV-1a 48 bits) – mesmo resultado no navegador e no Node
+    function codigoConf(obj) {
+        const s = JSON.stringify(obj); let h1 = 0x811c9dc5, h2 = 0x01000193;
+        for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619) >>> 0; h2 = Math.imul(h2 ^ (c + i), 2246822519) >>> 0; }
+        const h = (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).toUpperCase();
+        return `${h.slice(0, 4)}-${h.slice(4, 8)}-${h.slice(8, 12)}`;
+    }
+    R.checklistEmpreendimento = function (e) {
+        const G = [], m = id => e.matriz.find(x => x.id === id);
+        const grupo = nome => { const g = { nome, itens: [] }; G.push(g); return (ind, st, det) => g.itens.push({ ind, st, det: det || '' }); };
+        const doM = (add, id, ind) => { const x = m(id); if (x) add(ind || x.req, stDe(x), x.evid); };
+        let add = grupo('Licenciamento ambiental');
+        doM(add, 'LIC-01', 'Licença ambiental válida para a atividade (IAT – SGA/SIA)');
+        doM(add, 'LIC-02', 'Renovação requerida com 120 dias de antecedência');
+        if (m('LIC-06')) doM(add, 'LIC-06', 'Licenças antigas encerradas ou incorporadas');
+        add = grupo('Recursos hídricos');
+        doM(add, 'AGU-01', 'Captação de água outorgada ou dispensada (SIGARH)');
+        if (!m('AGU-01')) add('Captação de água outorgada ou dispensada (SIGARH)', 'na', 'Atividade sem uso típico de água e sem outorga de captação do titular');
+        const o = e.out, prob = o.filter(x => /Vencida|Irregular/.test(x.situ)), v6 = o.filter(x => x.situ === 'Vence em até 6 meses');
+        add('Outorgas do titular vigentes', !o.length ? 'na' : prob.length ? 'no' : v6.length ? 'at' : 'ok',
+            o.length ? `${o.length} outorga(s): ${o.length - prob.length} válida(s)${v6.length ? `, ${v6.length} vence(m) em até 6 meses` : ''}${prob.length ? `, ${prob.length} vencida(s) ou irregular(es)` : ''}` : 'Nenhuma outorga do titular localizada');
+        add = grupo('Efluentes e emissões atmosféricas');
+        doM(add, 'EFL-01', 'Destino de efluentes regular (outorga de lançamento, rede ou fertirrigação)');
+        if (!m('EFL-01')) add('Destino de efluentes regular', 'na', 'Atividade sem geração típica de efluente industrial na base pública');
+        doM(add, 'EMI-01', 'Fontes fixas de emissão monitoradas');
+        if (!m('EMI-01')) add('Fontes fixas de emissão monitoradas', 'na', 'Atividade sem fonte típica de emissão na base pública');
+        add = grupo('Cadastros, resíduos e passivos');
+        doM(add, 'CAD-01', 'CTF/APP regular e RAPP entregue (IBAMA)');
+        doM(add, 'RES-01', 'PGRS implantado e destinação rastreada (MTR/CDF)');
+        doM(add, 'PAS-01', 'Sem embargos, autos de infração ou TACs pendentes');
+        add = grupo('Território e entorno (1 km)');
+        doM(add, 'FLO-03', 'Fora de UC/zona de amortecimento e APP preservada');
+        if (e.entorno) {
+            const k = e.entorno.k, pr = (k.out_vencidas || 0) + (k.out_irreg || 0);
+            add('Outorgas vencidas ou irregulares no entorno', pr ? 'at' : 'ok', `${pr} outorga(s) de terceiros vencida(s)/irregular(es) a até 1 km`);
+            add('Pressão sobre a água no entorno', k.vazao_capt_m3h >= 100 ? 'at' : 'ok', `${k.out_val} outorga(s) válida(s), ${String(k.vazao_capt_m3h).replace('.', ',')} m³/h de captação outorgada a até 1 km`);
+        } else add('Entorno imediato', 'na', 'Sem unidade georreferenciada para calcular o entorno');
+        return G;
+    };
+    R.pendenciasEmpreendimento = function (e) {
+        const P = { Alto: 1, 'Médio': 2, Baixo: 3 }, S = {}; e.escopo.forEach(s => S[s.id] = s.servico);
+        const N = e.matriz.filter(m => m.st !== 'Conforme').map(m => ({ prior: m.natureza === 'Pendente' ? 3 : P[m.risco] || 2, fase: m.natureza === 'Pendente' ? 2 : 1, id: m.id, tema: m.tema, achado: m.evid, adequacao: (S[m.id] ? S[m.id] + '. ' : '') + m.acao }));
+        N.push({ prior: 3, fase: 2, id: 'VIST', tema: 'Vistoria', achado: 'Análise feita só com bases públicas', adequacao: 'Vistoria técnica e conferência documental (licenças, condicionantes, outorgas, PGRS, laudos) para confirmar os itens acima' });
+        return N.sort((a, b) => a.prior - b.prior || a.fase - b.fase);
+    };
+
     R.relatorioEmpreendimentoHTML = function (e, op) {
         op = op || {};
-        const tag = s => `<span class="tg ${/Vencida|Irregular|Não conforme/.test(s) ? 'v' : /6 meses|Parcial|Verificar|Sem evidência/.test(s) ? 'a' : 'ok'}">${esc(s)}</span>`;
+        const G = R.checklistEmpreendimento(e), N = R.pendenciasEmpreendimento(e), todos = G.flatMap(g => g.itens);
+        const cont = s => todos.filter(i => i.st === s).length, avaliados = todos.filter(i => i.st !== 'na' && i.st !== 'pd').length;
         const u1 = e.unidades[0], perto = x => x.xy && u1 && dist(x.xy, u1.xy) <= 1500;
         const vista = { area: e.area, lic: e.lic.filter(perto), out: e.out.filter(perto) };
-        const mapa = R.mapaURL(vista);
-        const nome = e.titular;   // o titular é o próprio objeto do relatório: o nome nunca é omitido
-        const kpi = (v, t, c) => `<div class="kpi ${c || ''}"><b>${fmtN(v)}</b><span>${t}</span></div>`;
-        const corExp = { Alta: 'v', Média: 'a', Baixa: 'ok' }[e.exposicao];
-        const ident = [['Titular', nome], ['CNPJ', e.cnpj && !e.pf ? e.cnpj : ''], ['Nome fantasia', e.ct && e.ct.nf], ['Atividade principal (CNAE)', e.ct && e.ct.cnae], ['Porte / situação', e.ct && [e.ct.porte, e.ct.sit].filter(Boolean).join(' · ')],
-            ['Endereço (Receita)', e.ct && !e.pf ? e.ct.end : ''], ['Contato (uso interno)', op.contatos && e.ct ? [e.ct.tel, e.ct.email].filter(Boolean).join(' · ') : ''], ['Município(s)', e.municipios.join(', ')],
-            ['Vínculo dos registros', e.vinculo], ['Finalidade', { 'Prospecção': 'Uso interno CS – prospecção comercial', 'Diagnóstico': 'Pré-diagnóstico técnico', 'Entrega': 'Relatório ao cliente' }[e.finalidade] || e.finalidade],
-            ['Base de dados', `Atualizada em ${e.base} · emitido em ${e.emitido} · motor Raio X v${e.versao}`]].filter(x => x[1]);
-        const tl = !e.lic.length ? '<p class="vazio">Nenhuma licença localizada.</p>' : `<table><thead><tr><th>Unid.</th><th>Atividade</th><th>Licença</th><th>Emissão</th><th>Validade</th><th>Situação</th></tr></thead><tbody>${e.lic.map(x => `<tr><td>${esc(unid(e, x))}</td><td>${esc(x.a)}${x.e && x.e !== x.a ? `<br><small>${esc(x.e)}</small>` : ''}${x.oc ? `<br><small>💧 ${esc(x.oc)}</small>` : ''}<br><small>${esc(x.mun)}</small></td><td><a href="${linkSGA(x)}">${esc(x.s)} ${esc(x.d)}</a><br><small>prot. ${esc(x.p)}</small></td><td>${esc(x.em || '—')}</td><td>${esc(x.va || '—')}</td><td>${tag(x.si)}</td></tr>`).join('')}</tbody></table>`;
-        const to = !e.out.length ? '<p class="vazio">Nenhuma outorga localizada.</p>' : `<table><thead><tr><th>Unid.</th><th>Tipo / finalidade</th><th>Nº</th><th>Vazão (m³/h)</th><th>Corpo hídrico / bacia</th><th>Vencimento</th><th>Situação</th></tr></thead><tbody>${e.out.map(x => `<tr><td>${esc(unid(e, x))}</td><td>${esc(x.interf || x.tipo)}${x.fin ? `<br><small>${esc(x.fin)}</small>` : ''}${x.emp ? `<br><small>${esc(x.emp)}</small>` : ''}</td><td>${esc(x.num || '—')}</td><td class="nu">${esc(x.vazao || '—')}</td><td>${esc(x.corpo || '—')}<br><small>${esc(x.bacia || '')}</small></td><td>${esc(x.venc || '—')}</td><td>${tag(x.situ)}</td></tr>`).join('')}</tbody></table>`;
-        const tm = `<table><thead><tr><th>ID</th><th>Requisito</th><th>Status preliminar</th><th>Risco</th><th>Evidência pública</th><th>Ação / próximo passo</th></tr></thead><tbody>${e.matriz.map(m => `<tr><td><b>${esc(m.id)}</b><br><small>${esc(m.tema)}</small></td><td>${esc(m.req)}<br><small>${esc(m.natureza)}</small></td><td>${tag(m.st)}</td><td>${esc(m.risco)}</td><td>${esc(m.evid)}</td><td>${esc(m.acao)}</td></tr>`).join('')}</tbody></table>`;
-        const tu = !e.unidades.length ? '<p class="vazio">Sem registros com coordenada.</p>' : `<table><thead><tr><th>Unidade</th><th>Município</th><th>Coordenada</th><th>Licenças</th><th>Outorgas</th><th>Atividades vigentes</th></tr></thead><tbody>${e.unidades.map(u => `<tr><td><b>${u.id}</b>${u.dm ? `<br><small>${fmtN(u.dm)} m do ponto clicado</small>` : ''}</td><td>${esc(u.mun)}</td><td><small>${u.xy[1].toFixed(5)}, ${u.xy[0].toFixed(5)}</small></td><td class="nu">${u.lic}</td><td class="nu">${u.out}</td><td><small>${esc(u.ativ.slice(0, 3).join('; ') || '—')}</small></td></tr>`).join('')}</tbody></table>${e.semCoord.lic + e.semCoord.out ? `<p class="nota">${e.semCoord.lic} licença(s) e ${e.semCoord.out} outorga(s) do titular sem coordenada aparecem só nas tabelas.</p>` : ''}`;
-        return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Raio X do Empreendimento – ${esc(nome)}</title>${ESTILO}</head><body>
-${op.botaoImprimir === false ? '' : '<div class="barra"><button onclick="print()">Imprimir / salvar em PDF</button></div>'}
-<div class="pg">
-<header><img src="${esc(op.logo || 'logo.png')}" alt="CS Consultoria Ambiental"><div><h1>Raio X do Empreendimento</h1><p>Pré-diagnóstico de licenças (IAT) e outorgas (SIGARH) – ${esc(nome)}</p></div></header>
-<div class="meta">${ident.map(([a, b]) => `<b>${esc(a)}</b><span>${esc(b)}</span>`).join('')}</div>
-<h2>1. Resumo</h2>
-<div class="kpis">${kpi(e.k.unidades, 'unidades georreferenciadas')}${kpi(e.k.lic_vig, 'licenças vigentes')}${kpi(e.k.lic_venc6, 'licenças vencem em até 6 meses', 'a')}${kpi(e.k.lic_vencidas, 'licenças vencidas sem renovação', 'v')}
-${kpi(e.k.out_val, 'outorgas válidas')}${kpi(e.k.out_venc6, 'outorgas vencem em até 6 meses', 'a')}${kpi(e.k.out_prob, 'outorgas vencidas ou irregulares', 'v')}${kpi(e.k.vazao_capt_m3h, 'm³/h de captação outorgada')}</div>
-<p class="box"><b>Exposição preliminar: <span class="tg ${corExp}">${esc(e.exposicao)}</span></b> · calculada só com os requisitos verificáveis na base pública (${e.matriz.filter(m => m.natureza !== 'Pendente').length} de ${e.matriz.length}). Os demais estão pendentes e entram no diagnóstico com documentos e vistoria.</p>
-<h2>2. Unidades e localização</h2>
-<img class="mapa" src="${esc(mapa.url)}" alt="Mapa da unidade principal" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div style="display:none">${R.croquiSVG(vista)}</div>
-<p class="leg">Unidade principal ${u1 ? `${esc(u1.id)} (${esc(u1.mun)})` : ''}; círculo de 1 km. ${e.unidades.length > 1 ? `As demais ${e.unidades.length - 1} unidade(s) estão na tabela abaixo.` : ''}<i style="background:#2e7d32"></i>licença vigente<i style="background:#e65100"></i>vence em 6 meses / água sem outorga<i style="background:#9e9e9e"></i>licença vencida<i style="background:#0277bd"></i>outorga válida<i style="background:#c62828"></i>outorga vencida/irregular</p>
-${tu}
-<h2>3. Matriz preliminar de conformidade</h2>
-<p class="nota">Mesmos IDs da matriz do Diagnóstico Ambiental Empresarial CS. Status preliminar com base em dados públicos; “Pendente” exige documento ou consulta.</p>
-${tm}
-<h2>4. Licenças ambientais do titular (${fmtN(e.lic.length)})</h2>${tl}
-<h2>5. Outorgas de água do titular (${fmtN(e.out.length)})</h2>${to}
-${e.entorno ? `<h2>6. Entorno imediato (1 km da unidade principal)</h2><p class="box">${fmtN(e.entorno.k.lic_vig)} licenças vigentes e ${fmtN(e.entorno.k.out_val)} outorgas válidas de todos os titulares no raio de 1 km, com ${e.entorno.k.vazao_capt_m3h.toLocaleString('pt-BR')} m³/h de captação outorgada${e.entorno.k.out_irreg ? ` e ${fmtN(e.entorno.k.out_irreg)} outorga(s) irregular(es)` : ''}. ${esc(e.entorno.achados.filter(t => /densidade|Concentração/.test(t)).join(' '))}</p>` : ''}
-<h2>${e.entorno ? 7 : 6}. Escopo sugerido para o diagnóstico</h2>
-<ul class="ach">${e.escopo.map(s => `<li class="${s.risco === 'Alto' ? 'v' : s.risco === 'Médio' ? 'a' : ''}"><span class="cl">${esc(s.id)}${s.risco ? ' · risco ' + esc(s.risco.toLowerCase()) : ''}</span>${esc(s.servico)}</li>`).join('')}</ul>
-<h3>Documentos a solicitar ao cliente</h3><ul>${e.docs.map(d => `<li style="font-size:11.5px">${esc(d)}</li>`).join('')}</ul>
-<h2>${e.entorno ? 8 : 7}. Limitações</h2>
-<p class="box">Pré-diagnóstico automático com dados públicos do IAT (SGA/SIA e SIGARH) consolidados pela plataforma Licenças e Outorgas do Paraná da CS. Os registros foram reunidos por ${esc(e.vinculo)}; homônimos ou razões sociais diferentes da mesma empresa podem ficar de fora ou entrar indevidamente e devem ser conferidos. Não substitui vistoria, análise documental, parecer técnico nem o Diagnóstico Ambiental Empresarial completo.</p>
-<footer>CS Consultoria Ambiental · Londrina/PR · Raio X do Empreendimento v${e.versao}${e.finalidade === 'Prospecção' ? ' · DOCUMENTO DE USO INTERNO' : ''}</footer>
+        const mapaPts = R.mapaURL(vista, 900, 520), mapaSat = R.mapaURL({ area: e.area, lic: [], out: [] }, 640, 900, 'satellite-streets-v12');
+        const agora = new Date(), dataHora = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }).replace(',', '');
+        const nome = e.titular, mun = e.municipios[0] || (u1 && u1.mun) || '–';
+        const codigo = codigoConf({ t: nome, b: e.base, k: e.k, m: e.matriz.map(m => [m.id, m.st]), d: agora.toISOString().slice(0, 10) });
+        const link = op.link || '';
+        const qr = px => { try { const Q = (op.qrcode || (typeof qrcode !== 'undefined' ? qrcode : null)); if (!Q || !link) return ''; const q = Q(0, 'M'); q.addData(link); q.make(); return q.createSvgTag({ cellSize: Math.max(2, Math.round(px / (q.getModuleCount() + 8))), margin: 4, scalable: true }); } catch (er) { return ''; } };
+        const F = n => Number(n || 0).toLocaleString('pt-BR');
+        const card = (rot, val, sub, cls) => { const t = String(val).replace(/<[^>]+>/g, ''), tam = t.length > 34 ? 'xs' : t.length > 20 ? 'sm' : ''; return `<div class="cd ${cls || ''}"><span>${rot}</span><b class="${tam}">${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`; };
+        const selo = st => `<span class="selo ${RX_ST[st][2]}">${RX_ST[st][0]} ${RX_ST[st][1]}</span>`;
+        const sec = (titulo, sub, corpo, quebra) => `<section class="${quebra === false ? '' : 'pg'}"><div class="st"><i></i><div><h2>${titulo}</h2>${sub ? `<p>${sub}</p>` : ''}</div></div>${corpo}</section>`;
+        const ROT = { 1: ['Alta', '#c62828'], 2: ['Média', '#ef6c00'], 3: ['Baixa / verificar', '#558b2f'] };
+        const venc = v => { const d = dataBR(v); if (!v) return '–'; if (!d) return esc(v); const dias = (d - agora) / 864e5;
+            return dias < 0 ? `<b style="color:#c62828">${esc(v)}<br>vencida</b>` : dias <= 180 ? `<b style="color:#e65100">${esc(v)}<br>vence em ${Math.ceil(dias)} dias</b>` : esc(v); };
+        const tab = (cab, linhas, vazio) => linhas.length ? `<table class="rx-tab"><tr>${cab.map(c => `<th>${c}</th>`).join('')}</tr>${linhas.map(l => `<tr>${l.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</table>` : `<p class="hint">${vazio || 'Nada encontrado.'}</p>`;
+        const tl = tab(['Nº', 'Unid.', 'Atividade', 'Modalidade e nº do documento', 'Emissão', 'Validade'], e.lic.map((x, i) => [`<b>${i + 1}</b>`, esc(unid(e, x)),
+            `${esc(x.a)}${x.e && x.e !== x.a ? `<br><span class="hint">${esc(x.e)}</span>` : ''}${x.oc ? `<br><span class="hint">💧 ${esc(x.oc)}</span>` : ''}<br><span class="hint">${esc(x.mun)}</span>`,
+            `${esc(x.s)}<br><span class="mono">nº ${esc(x.d || '–')}</span><br><a href="${linkSGA(x)}" target="_blank" rel="noopener">consulta no SGA ↗</a>`, esc(x.em || '–'), x.si === 'Vencida' ? `<b style="color:#c62828">${esc(x.va || '–')}<br>vencida</b>` : venc(x.va)]), 'Nenhuma licença do titular localizada na base pública.');
+        const to = tab(['Nº', 'Unid.', 'Tipo / finalidade', 'Nº da outorga / declaração', 'Vazão (m³/h)', 'Corpo hídrico / bacia', 'Vencimento'], e.out.map((x, i) => [`<b>${i + 1}</b>`, esc(unid(e, x)),
+            `${esc(x.interf || x.tipo)}${x.fin ? `<br><span class="hint">${esc(x.fin)}</span>` : ''}`, `<span class="mono">${esc(x.num || '–')}</span><br><span class="hint">${esc(x.doc || '')}${x.situ ? ' · ' + esc(x.situ) : ''}</span>`,
+            esc(x.vazao || '–'), `${esc(x.corpo || '–')}<br><span class="hint">${esc(x.bacia || '')}</span>`, /Irregular/.test(x.situ) ? '<b style="color:#c62828">irregular</b>' : venc(x.venc)]), 'Nenhuma outorga do titular localizada na base pública.');
+        const tu = tab(['Unidade', 'Município', 'Coordenadas (lat, long – SIRGAS 2000)', 'Licenças', 'Outorgas', 'Atividades vigentes'], e.unidades.map(u => [`<b>${u.id}</b>${u.dm != null ? `<br><span class="hint">${F(u.dm)} m do ponto consultado</span>` : ''}`, esc(u.mun),
+            `<span class="mono">${u.xy[1].toFixed(5)}, ${u.xy[0].toFixed(5)}</span><br><a href="https://www.google.com/maps?q=${u.xy[1].toFixed(6)},${u.xy[0].toFixed(6)}" target="_blank" rel="noopener">ver no Google Maps ↗</a>`, u.lic, u.out, `<span class="hint">${esc(u.ativ.slice(0, 3).join('; ') || '–')}</span>`]), 'Nenhum registro do titular com coordenada.');
+        const PF = e.pf;
+        const contato = op.contatos && e.ct ? [e.ct.tel, e.ct.email].filter(Boolean).join(' · ') : '';
+        const corExp = { Alta: '#c62828', 'Média': '#ef6c00', Baixa: '#2e7d32' }[e.exposicao];
+        const fin = { 'Prospecção': 'Uso interno CS – prospecção', 'Diagnóstico': 'Análise técnica CS', 'Entrega': 'Entrega ao cliente' }[e.finalidade] || e.finalidade;
+        const logo = esc(op.logo || 'logo.png');
+        const blocoCS = `<div class="csb"><img src="${logo}" alt="CS Consultoria Ambiental"><div><b>CS Consultoria Ambiental</b><br><span>Diagnóstico Ambiental Empresarial · licenciamento, outorgas, resíduos, efluentes e ESG · Londrina/PR</span></div></div>`;
+        return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Raio-X do Empreendimento – ${esc(nome)}</title>
+<style>
+ @page { size: A4; margin: 22mm 14mm 20mm;
+   @top-left { content: "CS Consultoria Ambiental  ·  RAIO-X DO EMPREENDIMENTO"; font: 600 8pt Arial; color: #1f4933; }
+   @top-right { content: "${esc(dataHora)}   ·   Página " counter(page) " de " counter(pages); font: 8pt Arial; color: #5f6d66; }
+   @bottom-left { content: "Código de conferência ${codigo}"; font: 8pt Consolas, monospace; color: #5f6d66; }
+   @bottom-right { content: "Fase 1 – análise automática sobre bases públicas – não substitui vistoria"; font: 7.5pt Arial; color: #8a978f; } }
+ @page :first { margin: 0; @top-left { content: none } @top-right { content: none } @bottom-left { content: none } @bottom-right { content: none } }
+ * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+ body { font-family: Inter, 'Segoe UI', Arial, sans-serif; color: #1d2a24; margin: 0; font-size: 10.5pt; line-height: 1.45; background: #e9eeeb; }
+ .folha { max-width: 210mm; margin: 0 auto; background: #fff; }
+ section, .capa { position: relative; z-index: 1; }
+ .pg { break-before: page; padding: 6mm 0 0; }
+ @media screen { .pg { padding: 14mm 14mm 8mm; border-top: 10px solid #e9eeeb; } }
+ .capa { height: 297mm; color: #fff; display: flex; flex-direction: column; padding: 18mm 16mm 14mm; overflow: hidden;
+   background: linear-gradient(160deg, rgba(20,46,32,.93), rgba(31,73,51,.80) 55%, rgba(20,46,32,.96)), url("${esc(mapaSat.url)}") center/cover, #1f4933; }
+ .capa .topo { display: flex; justify-content: space-between; align-items: center; } .capa .topo img { height: 52px; background: #fff; border-radius: 10px; padding: 6px 10px; }
+ .capa .data { background: rgba(0,0,0,.35); border-radius: 999px; padding: 6px 14px; font-size: 10pt; }
+ .capa .meio { margin-top: auto; margin-bottom: auto; } .capa .kick { letter-spacing: .3em; font-size: 9.5pt; font-weight: 700; color: #83bb4e; }
+ .capa h1 { font-size: 46pt; line-height: 1; margin: 8px 0 6px; font-weight: 800; } .capa h1 span { color: #83bb4e; display: block; }
+ .capa .sub { font-size: 13pt; opacity: .9; } .capa .tit { font-size: 15pt; font-weight: 700; margin-top: 14px; }
+ .capa .faixa { display: grid; grid-template-columns: 0.9fr 2.4fr 1fr auto; gap: 14px; align-items: center; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); border-radius: 14px; padding: 12px 16px; }
+ .capa .faixa span { display: block; font-size: 8pt; opacity: .75; text-transform: uppercase; letter-spacing: .08em; } .capa .faixa b { font-size: 10.5pt; overflow-wrap: anywhere; } .capa .faixa b.mono { font-size: 9pt; }
+ .capa .qr { background: #fff; border-radius: 8px; padding: 4px; width: 92px; height: 92px; } .capa .qr svg { width: 100%; height: 100%; } .capa .qr:empty { display: none; }
+ .capa .fase { display: inline-block; margin-top: 12px; background: #83bb4e; color: #10261a; font-weight: 700; border-radius: 999px; padding: 5px 14px; font-size: 9.5pt; }
+ .st { display: flex; gap: 10px; align-items: center; margin: 0 0 10px; } .st i { width: 6px; height: 34px; border-radius: 3px; background: linear-gradient(#83bb4e, #1f4933); }
+ .st h2 { margin: 0; font-size: 15pt; color: #1f4933; } .st p { margin: 0; color: #5f6d66; font-size: 9pt; }
+ h4 { margin: 14px 0 6px; font-size: 10.5pt; color: #1f4933; }
+ .cds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 10px; }
+ .cd { border: 1px solid #dfe8e2; border-radius: 10px; padding: 8px 10px; background: #fafcfb; min-width: 0; } .cd span { display: block; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .06em; color: #6b7a72; }
+ .cd b { display: block; font-size: 12.5pt; line-height: 1.25; margin-top: 3px; overflow-wrap: break-word; } .cd b.sm { font-size: 11pt; } .cd b.xs { font-size: 9.5pt; } .cd small { display: block; color: #6b7a72; font-size: 8.5pt; margin-top: 2px; }
+ .cd.l2 { grid-column: span 2; } .cd.l3 { grid-column: span 3; } .cds.n4 { grid-template-columns: repeat(4, 1fr); } .cds.n4 .cd b { font-size: 16pt; color: #1f4933; }
+ .placar { display: grid; grid-template-columns: 1.2fr repeat(4, 1fr); gap: 8px; margin: 6px 0 12px; }
+ .placar div { border-radius: 10px; padding: 10px; text-align: center; } .placar b { display: block; font-size: 20pt; } .placar span { font-size: 8.5pt; }
+ .placar .g { background: #1f4933; color: #fff; } .placar .ok { background: #e7f5ec; color: #1b6b3a; } .placar .at { background: #fff6dd; color: #8a5a00; } .placar .no { background: #fdecea; color: #b71c1c; } .placar .pd { background: #e8eef7; color: #2b4f86; }
+ .ck { width: 100%; border-collapse: collapse; margin-bottom: 10px; } .ck caption { background: #eef6e6; color: #1f4933; font-weight: 700; font-size: 9pt; letter-spacing: .12em; text-transform: uppercase; padding: 6px; border-radius: 6px; text-align: left; }
+ .ck th { font-size: 7.5pt; color: #6b7a72; text-align: left; text-transform: uppercase; letter-spacing: .06em; padding: 6px 4px; border-bottom: 1px solid #dfe8e2; } .ck th:last-child, .ck td:last-child { text-align: right; width: 150px; }
+ .ck td { padding: 7px 4px; border-bottom: 1px solid #eef2ef; vertical-align: top; } .ck tr { break-inside: avoid; }
+ .ck .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; } .ck .det { display: block; color: #5f6d66; font-size: 8.5pt; margin: 3px 0 0 16px; }
+ .selo { display: inline-block; font-size: 8pt; font-weight: 700; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+ .selo.ok { background: #e7f5ec; color: #1b6b3a; } .selo.at { background: #fff3d6; color: #8a5a00; } .selo.no { background: #fdecea; color: #b71c1c; } .selo.pd { background: #e8eef7; color: #2b4f86; } .selo.na { background: #eef1ef; color: #7b8781; }
+ .dot.ok { background: #2e7d32; } .dot.at { background: #f9a825; } .dot.no { background: #c62828; } .dot.pd { background: #5c85c4; } .dot.na { background: #b0bab4; }
+ img.mapa { width: 100%; border-radius: 10px; border: 1px solid #cfd8d3; margin: 4px 0 2px; } .leg { font-size: 8pt; color: #5f6d66; margin-bottom: 6px; }
+ .leg i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 3px -1px 8px; }
+ table.rx-tab { width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-bottom: 6px; } .rx-tab th { background: #1d2a24; color: #fff; text-align: left; padding: 6px; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .04em; }
+ .rx-tab td { border-bottom: 1px solid #e5ebe7; padding: 5px 6px; vertical-align: top; } .rx-tab tr { break-inside: avoid; }
+ .rx-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+ .mono { font-family: Consolas, monospace; font-size: 8.5pt; } .hint { color: #5f6d66; font-size: 8.5pt; } a { color: #1f4933; }
+ .obs { border: 1px solid #dfe8e2; border-left: 4px solid #83bb4e; border-radius: 8px; padding: 8px 10px; margin: 6px 0; font-size: 9pt; background: #fafcfb; }
+ .exp { border-radius: 10px; padding: 10px 12px; margin: 6px 0 10px; color: #fff; display: flex; justify-content: space-between; align-items: center; } .exp b { font-size: 15pt; } .exp span { font-size: 9pt; opacity: .9; max-width: 72%; }
+ .fonte { display: grid; grid-template-columns: 30% 1fr; gap: 4px 12px; font-size: 9pt; } .fonte b { color: #1f4933; }
+ .doc { columns: 2; font-size: 9pt; margin: 4px 0 8px; padding-left: 18px; } .doc li { break-inside: avoid; margin-bottom: 3px; }
+ .valida { display: flex; gap: 14px; align-items: center; border: 1px solid #dfe8e2; border-radius: 10px; padding: 10px; margin-top: 12px; } .valida .qr { width: 96px; height: 96px; } .valida .qr svg { width: 100%; height: 100%; } .valida .qr:empty { display: none; }
+ .csb { display: flex; gap: 14px; align-items: center; border-top: 3px solid #83bb4e; margin-top: 14px; padding-top: 10px; font-size: 9pt; color: #1f4933; } .csb img { height: 46px; } .csb span { color: #5f6d66; }
+ .interno { background: #fdecea; color: #b71c1c; font-weight: 700; text-align: center; border-radius: 8px; padding: 6px; margin: 0 0 8px; font-size: 9pt; }
+ .noprint { text-align: center; padding: 14px; } .noprint button { padding: 10px 20px; font-size: 14px; background: #1f4933; color: #fff; border: 0; border-radius: 8px; cursor: pointer; }
+ @media print { body { background: #fff; } .noprint { display: none; } h4 { break-after: avoid; } img.mapa { break-inside: avoid; max-height: 125mm; object-fit: cover; } }
+</style></head><body>
+${op.botaoImprimir === false ? '' : '<p class="noprint"><button onclick="window.print()">Salvar em PDF / imprimir</button> <span class="hint">Use "Salvar como PDF", papel A4, com "Gráficos de fundo" ligado.</span></p>'}
+<div class="folha">
+<div class="capa">
+  <div class="topo"><img src="${logo}" alt="CS Consultoria Ambiental"><span class="data">${esc(dataHora)}</span></div>
+  <div class="meio"><div class="kick">DIAGNÓSTICO AMBIENTAL EMPRESARIAL · CONSULTA AUTOMÁTICA</div><h1>Raio-X do<span>Empreendimento</span></h1>
+    <div class="sub">Consulta automática a ${todos.length} indicadores em bases públicas oficiais<br><b>${esc(e.municipios.join(', ') || mun)}</b></div>
+    <div class="tit">${esc(nome)}</div><span class="fase">FASE 1 · DADOS PÚBLICOS</span></div>
+  <div class="faixa"><div><span>Emitido por</span><b>CS Consultoria Ambiental</b></div><div><span>${PF ? 'Titular' : 'Titular · CNPJ'}</span><b>${esc(nome)}</b>${!PF && e.cnpj ? `<br><b class="mono">${esc(e.cnpj)}</b>` : ''}</div>
+    <div><span>Unidades · finalidade</span><b>${e.k.unidades} unidade(s)</b><br><b style="font-size:9pt">${esc(fin)}</b></div><div class="qr">${qr(92)}</div></div>
+</div>
+
+${sec('Detalhes do empreendimento', 'Identificação, cadastro e localização da unidade principal', `
+  ${e.finalidade === 'Prospecção' ? '<div class="interno">DOCUMENTO DE USO INTERNO – contém contatos</div>' : ''}
+  <div class="cds">${card('Titular', esc(nome), '', 'l2')}${card(PF ? 'Tipo' : 'CNPJ', PF ? 'Pessoa física' : `<span class="mono">${esc(e.cnpj || 'não identificado')}</span>`)}
+  ${e.ct && e.ct.nf ? card('Nome fantasia', esc(e.ct.nf)) : ''}${e.ct && e.ct.cnae ? card('Atividade principal (CNAE)', esc(e.ct.cnae), '', 'l2') : ''}
+  ${e.ct && (e.ct.porte || e.ct.sit) ? card('Porte · situação na Receita', esc([e.ct.porte, e.ct.sit].filter(Boolean).join(' · '))) : ''}
+  ${!PF && e.ct && e.ct.end ? card('Endereço (Receita Federal)', esc(e.ct.end), '', 'l2') : ''}${contato ? card('Contato (uso interno)', esc(contato), '', 'l3') : ''}
+  ${card('Município(s)', esc(e.municipios.join(', ') || '–'))}${card('Unidade principal', u1 ? `${u1.id} · ${esc(u1.mun)}` : '–', u1 ? `<span class="mono">${u1.xy[1].toFixed(5)}, ${u1.xy[0].toFixed(5)}</span>` : '')}
+  ${card('Base de dados', esc(e.base || '–'), `motor Raio-X v${e.versao}`)}${card('Vínculo dos registros', esc(e.vinculo), '', 'l3')}</div>
+  ${u1 ? `<img class="mapa" src="${esc(mapaPts.url)}" alt="Localização da unidade principal" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div style="display:none">${R.croquiSVG(vista)}</div>
+  <div class="leg">Círculo vermelho: 1 km em torno da unidade principal.<i style="background:#2e7d32"></i>licença vigente<i style="background:#e65100"></i>vence em 6 meses / água sem outorga<i style="background:#9e9e9e"></i>licença vencida<i style="background:#0277bd"></i>outorga válida<i style="background:#c62828"></i>outorga vencida/irregular</div>` : '<p class="hint">Sem registro do titular com coordenada – localização a confirmar com o cliente.</p>'}`)}
+
+${sec('Resultado da análise', 'Resumo dos indicadores consultados', `
+  <div class="placar"><div class="g"><b>${cont('ok')}/${avaliados}</b><span>indicadores verificáveis em acordo</span></div><div class="ok"><b>${cont('ok')}</b><span>✓ em acordo</span></div><div class="at"><b>${cont('at')}</b><span>! atenção</span></div><div class="no"><b>${cont('no')}</b><span>✕ em desacordo</span></div><div class="pd"><b>${cont('pd')}</b><span>… pendentes – Fase 2</span></div></div>
+  <div class="exp" style="background:${corExp}"><b>Exposição preliminar: ${esc(e.exposicao)}</b><span>Calculada só com os requisitos verificáveis na base pública (${e.matriz.filter(m => m.natureza !== 'Pendente').length} de ${e.matriz.length}). Os pendentes entram na Fase 2, com documentos e vistoria.</span></div>
+  <div class="cds n4">${card('Licenças vigentes', F(e.k.lic_vig), `${F(e.k.lic_venc6)} vencem em até 6 meses`)}${card('Licenças vencidas', F(e.k.lic_vencidas), 'sem renovação registrada')}${card('Outorgas válidas', F(e.k.out_val), `${F(e.k.out_prob)} vencidas ou irregulares`)}${card('Captação outorgada', F(e.k.vazao_capt_m3h), 'm³/h')}</div>
+  ${G.map(g => `<table class="ck"><caption>${g.nome}</caption><tr><th>Indicador</th><th>Status</th></tr>${g.itens.map(i => `<tr><td><span class="dot ${RX_ST[i.st][2]}"></span>${esc(i.ind)}${i.det ? `<span class="det">${esc(i.det)}</span>` : ''}</td><td>${selo(i.st)}</td></tr>`).join('')}</table>`).join('')}`)}
+
+${sec('Licenciamento ambiental', `Licenças do titular no IAT (SGA/SIA) – ${F(e.lic.length)} registro(s)`, tl)}
+
+${sec('Recursos hídricos', `Outorgas e declarações do titular no SIGARH – ${F(e.out.length)} registro(s)`, to, e.lic.length + e.out.length > 14)}
+
+${sec('Unidades e entorno', 'Unidades físicas do titular e situação no raio de 1 km da unidade principal', `
+  ${tu}${e.semCoord.lic + e.semCoord.out ? `<p class="hint">${e.semCoord.lic} licença(s) e ${e.semCoord.out} outorga(s) do titular sem coordenada no IAT não entram no mapa.</p>` : ''}
+  ${e.entorno ? `<h4>Entorno imediato (1 km, todos os titulares)</h4><div class="cds n4">${card('Licenças vigentes', F(e.entorno.k.lic_vig))}${card('Outorgas válidas', F(e.entorno.k.out_val))}${card('Captação outorgada', F(e.entorno.k.vazao_capt_m3h), 'm³/h')}${card('Outorgas vencidas/irregulares', F((e.entorno.k.out_vencidas || 0) + (e.entorno.k.out_irreg || 0)))}</div>
+  ${e.entorno.achados.length ? e.entorno.achados.slice(0, 5).map(t => `<div class="obs">${esc(t)}</div>`).join('') : ''}` : ''}`)}
+
+${sec('Pendências e adequações sugeridas', 'Base para o plano de adequação, o escopo da Fase 2 e o orçamento', `
+  <div class="placar" style="grid-template-columns:repeat(3,1fr) 1.2fr">${[1, 2, 3].map(k => `<div style="background:${ROT[k][1]}1a;color:${ROT[k][1]}"><b>${N.filter(n => n.prior === k).length}</b><span>prioridade ${ROT[k][0].toLowerCase()}</span></div>`).join('')}<div class="g"><b>${N.length}</b><span>itens no total</span></div></div>
+  <table class="rx-tab"><tr><th>Nº</th><th>Prioridade</th><th>Tema</th><th>Situação encontrada</th><th>Adequação / serviço sugerido</th></tr>
+  ${N.map((n, i) => `<tr><td><b>${i + 1}</b><br><span class="hint">${esc(n.id)}</span></td><td><span class="rx-sw" style="background:${ROT[n.prior][1]}"></span>${ROT[n.prior][0]}${n.fase === 2 ? '<br><span class="hint">Fase 2</span>' : ''}</td><td>${esc(n.tema)}</td><td>${esc(n.achado)}</td><td>${esc(n.adequacao)}</td></tr>`).join('')}</table>
+  <p class="hint">Lista indicativa. Itens marcados como Fase 2 dependem de documentos do cliente e de vistoria técnica.</p>
+  <h4>Documentos a solicitar para a Fase 2</h4><ul class="doc">${e.docs.map(d => `<li>${esc(d)}</li>`).join('')}</ul>
+  <div class="obs"><b>Próximo passo com a CS:</b> Fase 2 – Diagnóstico Ambiental Empresarial completo (matriz CS Nível 1, com documentos, condicionantes das licenças e vistoria), índice ICMA e plano de ação 5W2H priorizado, unificado com esta Fase 1.</div>${blocoCS}`)}
+
+${sec('Metodologia e fontes', 'Como esta análise foi feita', `
+  <p>Os registros públicos do titular são reunidos por ${esc(e.vinculo)} e agrupados em unidades físicas (pontos a até 500 m entre si). Cada indicador segue os mesmos IDs da matriz do Diagnóstico Ambiental Empresarial CS, para que a Fase 2 parta deste resultado. Pontos usam as coordenadas declaradas pelos titulares ao IAT e podem conter erros.</p>
+  <div class="fonte">
+   <b>IAT – SGA/SIA</b><span>Licenças ambientais: modalidade, número, atividade, emissão e validade; consulta pública do processo.</span>
+   <b>IAT – SIGARH</b><span>Outorgas e declarações de uso da água: tipo, número, vazão, corpo hídrico, bacia e vencimento.</span>
+   <b>IAT / GeoPR</b><span>Camadas geográficas de licenciamento e outorgas, consolidadas pela plataforma Licenças e Outorgas do Paraná (CS).</span>
+   <b>IBGE</b><span>Limites municipais.</span>
+   ${e.ct ? '<b>Receita Federal (CNPJ)</b><span>Razão social, CNAE, porte e endereço, quando disponíveis na Área CS.</span>' : ''}
+   <b>Legislação de referência</b><span>LC 140/2011; CONAMA 237/1997, 430/2011, 382/2006 e 436/2011; Lei 9.433/1997; Lei 12.305/2010; Lei 6.938/1981 (CTF/APP).</span>
+  </div>
+  <p class="hint">Legenda dos selos: <b>Em acordo</b> – situação regular na base pública; <b>Atenção</b> – item a verificar ou que pode exigir adequação; <b>Em desacordo</b> – pendência identificada; <b>Pendente – Fase 2</b> – não verificável em base pública, depende de documento ou vistoria; <b>Não se aplica</b> – sem indício da obrigação para a atividade.</p>
+  <p class="hint">Limitações: homônimos ou razões sociais diferentes da mesma empresa podem ficar de fora ou entrar indevidamente; licenças sem coordenada, dispensadas ou de competência municipal podem não aparecer. Este Raio-X não substitui vistoria, análise documental, consulta a restrições territoriais (UC, APP, terras indígenas) nem o diagnóstico completo.${PF ? ' Titular pessoa física: CPF e endereço não são exibidos.' : ''}</p>
+  <div class="valida"><div class="qr">${qr(96)}</div><div><b>Conferência do relatório</b><br><span class="mono">${codigo}</span><br><span class="hint">${link ? 'Aponte a câmera para o QR code para abrir este empreendimento na plataforma.' : 'Gerado pelo agente CS a partir da base pública da plataforma.'} Base de ${esc(e.base)} · emitido em ${esc(dataHora)}.</span></div></div>
+  ${blocoCS}`)}
 </div></body></html>`;
     };
     // Pré-preenchimento da Matriz de Diagnóstico Técnico CS (planilha) a partir do Raio X do Empreendimento
