@@ -86,7 +86,7 @@ select, .filtros input { width: 100%; padding: 7px 8px; border: 1px solid var(--
 .topo .area.raiox.on { background: #c62828; color: #fff; }
 .topo #btnArea { margin-left: 8px; }
 .rxform .lin { display: flex; gap: 6px; align-items: center; }
-.rxform input:not([type=file]) { width: 100%; padding: 7px 8px; border: 1px solid var(--borda); border-radius: 6px; font-size: .9rem; }
+.rxform input:not([type=file]):not([type=checkbox]) { width: 100%; padding: 7px 8px; border: 1px solid var(--borda); border-radius: 6px; font-size: .9rem; }
 .rxform input[type=file] { font-size: .78rem; flex: 1; min-width: 0; }
 .rxform .lin select { width: auto; }
 .rxform .lin button { padding: 7px 12px; border: 0; background: var(--verde2); color: #fff; border-radius: 6px; cursor: pointer; }
@@ -94,3 +94,6 @@ ul.rxach { list-style: none; padding: 0; margin: 6px 0; }
 ul.rxach li { font-size: .8rem; margin: 5px 0; padding: 6px 8px; border-left: 4px solid var(--borda); background: var(--fundo); border-radius: 0 6px 6px 0; }
 ul.rxach li.alerta { border-left-color: #c62828; } ul.rxach li.atencao { border-left-color: #e65100; }
 ul.rxach b { font-size: .7rem; text-transform: uppercase; color: var(--suave); margin-right: 4px; }
+.btnEmp { font-size: .8rem; background: none; border: none; padding: 0; color: #c62828 !important; cursor: pointer; text-decoration: underline; }
+.pop .btnEmp { margin-top: 6px; font-weight: 600; }
+.rxform label input[type=checkbox] { margin-right: 6px; vertical-align: middle; }

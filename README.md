@@ -14,3 +14,9 @@ Relatório de licenças e outorgas num **raio em torno de um ponto** ou num **po
 - **Linha de comando / agente CS no Claude:** `node tools/raiox.mjs --lat -23.3045 --lon -51.1696 --raio 2000 --finalidade Diagnóstico` (ou `--kml area.kml --entorno 1000`). Gera `relatorio.html`, `resultado.json`, `licencas.csv` e `outorgas.csv`, baixando só os arquivos necessários do ramo `dados`.
 - Finalidades: `Diagnóstico` (Ficha de Inteligência Prévia), `Entrega` (ao cliente; nomes de pessoas físicas omitidos) e `Prospecção` (uso interno; contatos só com a senha da Área CS em `CONTATOS_SENHA`).
 - Site e linha de comando usam o **mesmo motor** (`js/raiox.js`), então os números são idênticos.
+
+### Raio X do Empreendimento (análise unitária)
+
+Clique num ponto do mapa ou num item da lista do município → **🔎 Raio X do empreendimento**. Reúne todas as licenças e outorgas do titular no Paraná (pelo nome normalizado; com a Área CS aberta, também pela raiz do CNPJ), separa as **unidades físicas** (pontos a até 500 m), monta a **matriz preliminar** com os mesmos IDs do Diagnóstico Ambiental Empresarial CS (LIC, AGU, EFL, EMI, CAD, RES, PAS, TER), calcula a **exposição preliminar** e sugere o **escopo do diagnóstico** e os documentos a pedir ao cliente.
+
+Linha de comando: `node tools/raiox.mjs --titular "RAZÃO SOCIAL" --municipio Londrina [--lat .. --lon ..] [--so-municipio]` → `relatorio.html`, `resultado.json`, `empreendimento.csv`. Pessoa física exige `--municipio` (evita homônimos).

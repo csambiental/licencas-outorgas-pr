@@ -6,6 +6,8 @@
 //   node tools/raiox.mjs --lat -23.3045 --lon -51.1696 --raio 2000 --titulo "Raio X – Fazenda X" --cliente "Fazenda X" --finalidade Diagnóstico
 //   node tools/raiox.mjs --kml area.kml --entorno 1000 --finalidade Entrega --anonimizar
 //   CONTATOS_SENHA=... node tools/raiox.mjs --lat ... --lon ... --raio 3000 --finalidade Prospecção --contatos
+//   Raio X do EMPREENDIMENTO (análise unitária, pré-diagnóstico):
+//   node tools/raiox.mjs --titular "LATICINIO EXEMPLO LTDA" [--municipio Londrina] [--lat .. --lon ..] [--cnpj 00000000000100] [--so-municipio]
 //
 // Saída (pasta --saida, padrão ./raiox_<data>): relatorio.html, resultado.json, licencas.csv, outorgas.csv
 import fs from 'node:fs';
@@ -31,7 +33,9 @@ if (args.ajuda || args.help) { console.log(fs.readFileSync(new URL(import.meta.u
 
 // ---------------- área
 let area;
-if (args.kml) {
+const MODO_EMP = !!args.titular;
+if (MODO_EMP) { /* análise unitária: área definida depois */ }
+else if (args.kml) {
     const k = RaioX.lerKML(fs.readFileSync(args.kml, 'utf8'));
     if (!k.aneis.length) sair('nenhum polígono encontrado no KML');
     area = RaioX.area({ tipo: 'poligono', aneis: k.aneis, entorno: +(args.entorno || 0), nome: args.nome || k.nome });
@@ -54,11 +58,40 @@ if (!fs.existsSync(path.join(BASE, '.git'))) {
 }
 const ler = f => JSON.parse(fs.readFileSync(path.join(BASE, f), 'utf8'));
 const munGeo = ler('municipios.geojson');
-const cods = RaioX.municipiosDaArea(area, munGeo);
-if (!cods.length) sair('nenhum município do PR na área');
-const precisa = cods.map(c => `/m/${c}.json`).concat(args.contatos ? cods.map(c => `/c/${c}.bin`) : []);
-git(`sparse-checkout add ${precisa.join(' ')}`);
-const dados = cods.map(c => ler(`m/${c}.json`));
+const addSparse = L => { if (L.length) git(`sparse-checkout add ${L.join(' ')}`); };
+const carregar = cs => { addSparse(cs.filter(c => !fs.existsSync(path.join(BASE, 'm', c + '.json'))).map(c => `/m/${c}.json`)); return cs.map(c => ler(`m/${c}.json`)); };
+const semAc = t => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+let cods, dados, ref = null;
+if (MODO_EMP) {
+    const pal = RaioX.palavras(args.titular);
+    if (!pal.length) sair('nome do titular muito curto');
+    addSparse([...new Set(pal.map(w => `/busca/w/${w.slice(0, 3)}.json`))].filter(f => !fs.existsSync(path.join(BASE, f))));
+    let chaves = null;
+    for (const w of pal) {
+        const f = path.join(BASE, 'busca', 'w', w.slice(0, 3) + '.json');
+        const d = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : {};
+        const st = new Set((d[w] || []).map(v => v.join('|')));
+        chaves = chaves ? new Set([...chaves].filter(x => st.has(x))) : st;
+    }
+    cods = [...new Set([...chaves].map(k => k.split('|')[0]))];
+    let codRef = '';
+    if (args.municipio) {
+        const m = munGeo.features.find(f => f.properties.cod === String(args.municipio) || semAc(f.properties.nome) === semAc(args.municipio));
+        if (!m) sair('município não encontrado: ' + args.municipio);
+        codRef = m.properties.cod;
+    }
+    if (!cods.length) sair('titular não encontrado na base: ' + args.titular);
+    if (RaioX.provavelPF(args.titular) && !codRef) sair('titular parece pessoa física: informe --municipio para evitar homônimos');
+    if (codRef && !cods.includes(codRef)) cods.push(codRef);
+    if (args['so-municipio'] && codRef) cods = [codRef];
+    ref = { nome: args.titular, cod: codRef || cods[0], xy: isFinite(+args.lat) && isFinite(+args.lon) && args.lat ? [+args.lon, +args.lat] : null };
+    dados = carregar(cods);
+} else {
+    cods = RaioX.municipiosDaArea(area, munGeo);
+    if (!cods.length) sair('nenhum município do PR na área');
+    dados = carregar(cods);
+}
+if (args.contatos) addSparse(cods.map(c => `/c/${c}.bin`).filter(f => !fs.existsSync(path.join(BASE, f))));
 
 // ---------------- contatos (uso interno; exige CONTATOS_SENHA)
 async function chave(senha) {
@@ -77,29 +110,43 @@ const op = {
     finalidade: { prospeccao: 'Prospecção', 'prospecção': 'Prospecção', entrega: 'Entrega', diagnostico: 'Diagnóstico', 'diagnóstico': 'Diagnóstico' }[String(args.finalidade || 'diagnostico').toLowerCase()] || args.finalidade,
     anonimizar: !!args.anonimizar || String(args.finalidade || '').toLowerCase() === 'entrega'
 };
-const r = RaioX.calcular(area, dados, munGeo, op);
-
+// Área CS (senha em CONTATOS_SENHA): anexa o cadastro da Receita (CNPJ, CNAE, endereço) a cada registro; telefone e e-mail só saem em Prospecção
 if (args.contatos) {
-    if (op.finalidade !== 'Prospecção') sair('--contatos só é permitido com --finalidade Prospecção (uso interno)');
-    if (!process.env.CONTATOS_SENHA) sair('defina a variável CONTATOS_SENHA para incluir contatos');
+    if (!process.env.CONTATOS_SENHA) sair('defina a variável CONTATOS_SENHA para usar os dados da Área CS');
     const k = await chave(process.env.CONTATOS_SENHA);
     try { await decifrar('c/verifica.bin', k); } catch (e) { sair('senha da Área CS incorreta'); }
-    const C = {};
-    for (const c of cods) { try { C[c] = await decifrar(`c/${c}.bin`, k); } catch (e) { C[c] = null; } }
-    const pega = (cod, t, ch) => { const d = C[cod]; const i = d && (d[t] || {})[ch]; return i && i.length ? d.r[i[0]] : null; };
-    r.lic.forEach(x => { x.ct = pega(x.cod, 'l', x.p); });
-    r.out.forEach(x => { x.ct = pega(x.cod, 'o', x.num); });
-    op.contatos = true;
+    for (const d of dados) {
+        let C = null; try { C = await decifrar(`c/${d.cod}.bin`, k); } catch (e) { }
+        const pega = (t, ch) => { const i = C && (C[t] || {})[ch]; return i && i.length ? C.r[i[0]] : null; };
+        d.lic.forEach(x => { x.ct = pega('l', x.p); }); d.out.forEach(x => { x.ct = pega('o', x.num); });
+    }
+    op.contatos = op.finalidade === 'Prospecção';
 }
+let r;
+if (MODO_EMP) {
+    op.soMunicipio = !!args['so-municipio']; op.cnpj = args.cnpj || '';
+    r = RaioX.empreendimento(ref, dados, munGeo, op);
+    if (r.unidades.length) {   // vizinhos para o entorno de 1 km
+        const viz = RaioX.municipiosDaArea(RaioX.area({ tipo: 'circulo', centro: r.unidades[0].xy, raio: 1000 }), munGeo).filter(c => !cods.includes(c));
+        if (viz.length) { dados = dados.concat(carregar(viz)); cods = cods.concat(viz); r = RaioX.empreendimento(ref, dados, munGeo, op); }
+    }
+} else r = RaioX.calcular(area, dados, munGeo, op);
 
 // ---------------- saída
 const pasta = args.saida || `raiox_${new Date().toISOString().slice(0, 10)}`;
 fs.mkdirSync(pasta, { recursive: true });
 const logo = path.join(AQUI, '..', 'logo.png');
 op.logo = fs.existsSync(logo) ? 'data:image/png;base64,' + fs.readFileSync(logo).toString('base64') : '';
-fs.writeFileSync(path.join(pasta, 'relatorio.html'), RaioX.relatorioHTML(r, op));
-fs.writeFileSync(path.join(pasta, 'licencas.csv'), RaioX.csv(r, 'lic', op));
-fs.writeFileSync(path.join(pasta, 'outorgas.csv'), RaioX.csv(r, 'out', op));
+if (MODO_EMP) {
+    fs.writeFileSync(path.join(pasta, 'relatorio.html'), RaioX.relatorioEmpreendimentoHTML(r, op));
+    fs.writeFileSync(path.join(pasta, 'empreendimento.csv'), RaioX.csvEmpreendimento(r));
+} else {
+    fs.writeFileSync(path.join(pasta, 'relatorio.html'), RaioX.relatorioHTML(r, op));
+    fs.writeFileSync(path.join(pasta, 'licencas.csv'), RaioX.csv(r, 'lic', op));
+    fs.writeFileSync(path.join(pasta, 'outorgas.csv'), RaioX.csv(r, 'out', op));
+}
 const semContato = JSON.parse(JSON.stringify(r, (k, v) => k === 'ct' ? undefined : v));
 fs.writeFileSync(path.join(pasta, 'resultado.json'), JSON.stringify(semContato, null, 1));
-console.log(JSON.stringify({ pasta: path.resolve(pasta), base: r.base, municipios: r.municipios, area: { ha: r.area.ha, centro: r.area.centro }, indicadores: r.k, comparacao: r.comp, achados: r.achados }, null, 1));
+console.log(JSON.stringify(MODO_EMP
+    ? { pasta: path.resolve(pasta), base: r.base, titular: r.titular, vinculo: r.vinculo, municipios: r.municipios, unidades: r.unidades.map(u => ({ id: u.id, mun: u.mun, xy: u.xy, lic: u.lic, out: u.out })), indicadores: r.k, exposicao: r.exposicao, matriz: r.matriz.map(m => ({ id: m.id, st: m.st, risco: m.risco, evid: m.evid })), escopo: r.escopo.map(x => x.servico) }
+    : { pasta: path.resolve(pasta), base: r.base, municipios: r.municipios, area: { ha: r.area.ha, centro: r.area.centro }, indicadores: r.k, comparacao: r.comp, achados: r.achados }, null, 1));

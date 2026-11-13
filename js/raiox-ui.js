@@ -121,6 +121,89 @@
         document.getElementById('rxCsvL').onclick = () => csv('lic'); document.getElementById('rxCsvO').onclick = () => csv('out');
     }
 
+
+    // ================================================================ Raio X do EMPREENDIMENTO (clique num único negócio)
+    let refEmp = null, empRes = null;
+    document.addEventListener('click', e => {
+        const b = e.target.closest('.btnEmp'); if (!b) return;
+        e.preventDefault(); e.stopPropagation();
+        abrirEmpreendimento({ nome: b.dataset.nome, cod: b.dataset.c, xy: b.dataset.xy ? JSON.parse(b.dataset.xy) : null, p: b.dataset.p, num: b.dataset.num });
+    });
+    async function abrirEmpreendimento(ref) {
+        refEmp = ref; window.modoRaioX = false; btn.classList.remove('on'); map.getCanvas().style.cursor = '';
+        document.querySelectorAll('.mapboxgl-popup').forEach(p => p.remove());
+        ['estado', 'municipio', 'resultados'].forEach(i => document.getElementById(i).hidden = true);
+        el.hidden = false;
+        const interno = !!CHAVE;
+        el.innerHTML = `<button class="voltar" id="empVoltar">← voltar</button><h2>🔎 Raio X do empreendimento</h2>
+            <p class="rot">${esc(ref.nome)}</p>
+            <div class="rxform"><label class="rot">Finalidade</label>
+            <select id="empFin"><option value="Diagnóstico">Pré-diagnóstico técnico</option><option value="Entrega">Entrega ao cliente</option>${interno ? '<option value="Prospecção">Prospecção comercial (uso interno)</option>' : ''}</select>
+            <label class="rot"><input type="checkbox" id="empSoMun"> Só neste município (evita homônimos e outras filiais)</label></div>
+            ${interno ? '' : '<p class="rot">Entre na 🔒 Área CS para reunir as unidades pelo CNPJ e ver CNAE, porte e endereço.</p>'}
+            <div id="empRes"><p class="dica">Reunindo licenças e outorgas do titular em todo o Paraná…</p></div>`;
+        document.getElementById('empVoltar').onclick = () => { el.hidden = true; document.getElementById(munSel ? 'municipio' : 'estado').hidden = false; };
+        document.getElementById('empFin').onchange = calcularEmp; document.getElementById('empSoMun').onchange = calcularEmp;
+        await calcularEmp();
+    }
+    async function cdsTitular(nome) {
+        let ch = null;
+        for (const w of RaioX.palavras(nome)) {
+            const d = await carregarIdx('w', w.slice(0, 3)), st = new Set((d[w] || []).map(v => v.join('|')));
+            ch = ch ? new Set([...ch].filter(x => st.has(x))) : st;
+            if (!ch.size) break;
+        }
+        return [...new Set([...(ch || [])].map(k => k.split('|')[0]))];
+    }
+    async function calcularEmp() {
+        const ref = refEmp, box = document.getElementById('empRes');
+        const fin = document.getElementById('empFin').value;
+        let so = document.getElementById('empSoMun').checked;
+        let cods = RaioX.provavelPF(ref.nome) ? [ref.cod] : await cdsTitular(ref.nome);
+        if (!cods.includes(ref.cod)) cods.push(ref.cod);
+        if (cods.length > 40 && !so) { so = true; document.getElementById('empSoMun').checked = true; }
+        if (so) cods = [ref.cod];
+        let dados = await Promise.all(cods.map(c => carregarMun(c)));
+        const op = { finalidade: fin, soMunicipio: so, anonimizar: fin === 'Entrega', contatos: fin === 'Prospecção' && !!CHAVE, logo: new URL('logo.png', location.href).href };
+        const anexar = async ds => { if (!CHAVE) return; for (const d of ds) { const C = await contatosMun(d.cod); if (!C) continue; const pega = (t, k) => { const i = (C[t] || {})[k]; return i && i.length ? C.r[i[0]] : null; }; d.lic.forEach(x => { if (!('ct' in x)) x.ct = pega('l', x.p); }); d.out.forEach(x => { if (!('ct' in x)) x.ct = pega('o', x.num); }); } };
+        await anexar(dados);
+        if (CHAVE) {   // CNPJ do registro clicado → reúne só as unidades do mesmo CNPJ (raiz)
+            const d0 = dados.find(d => d.cod === ref.cod), x0 = d0 && (ref.p ? d0.lic.find(x => x.p === ref.p) : d0.out.find(x => x.num === ref.num));
+            if (x0 && x0.ct && x0.ct.cnpj) op.cnpj = x0.ct.cnpj;
+        }
+        empRes = RaioX.empreendimento(ref, dados, MUNS, op);
+        if (empRes.unidades.length) {
+            const viz = RaioX.municipiosDaArea(RaioX.area({ tipo: 'circulo', centro: empRes.unidades[0].xy, raio: 1000 }), MUNS).filter(c => !cods.includes(c));
+            if (viz.length) { const mais = await Promise.all(viz.map(c => carregarMun(c))); await anexar(mais); dados = dados.concat(mais); empRes = RaioX.empreendimento(ref, dados, MUNS, op); }
+        }
+        const e = empRes, k = e.k;
+        const kp = (v, t, c) => `<div class="kpi ${c || ''}"><b>${fmt(v)}</b><span>${t}</span></div>`;
+        const cor = { 'Conforme': 'ok', 'Parcial': 'vence', 'Verificar': 'vence', 'Sem evidência': 'vence', 'Não conforme': 'vencida' };
+        box.innerHTML = `<h3>${esc(e.titular)}</h3>
+            ${e.ct ? `<p class="rot">CNPJ ${esc(e.ct.cnpj || '')} · ${esc(e.ct.cnae || '')} · ${esc(e.ct.porte || '')}</p>` : ''}
+            <p class="rot">${esc(e.municipios.join(', '))} · vínculo por ${esc(e.vinculo)} · base de ${esc(e.base)}</p>
+            <p>Exposição preliminar: <span class="tag ${{ Alta: 'vencida', Média: 'vence', Baixa: 'ok' }[e.exposicao]}">${esc(e.exposicao)}</span></p>
+            <div class="kpis">${kp(k.unidades, 'unidades')}${kp(k.lic_vig, 'licenças vigentes')}${kp(k.lic_venc6, 'licenças vencem em 6 meses', 'atencao')}${kp(k.lic_vencidas, 'licenças vencidas', 'alerta')}
+            ${kp(k.out_val, 'outorgas válidas')}${kp(k.out_prob, 'outorgas vencidas/irregulares', 'alerta')}</div>
+            <div class="baixar"><button id="empRel">📄 Pré-diagnóstico (imprimir/PDF)</button><button id="empCsv">⬇ Planilha</button></div>
+            <div class="baixar"><button id="empArea">🎯 Raio X da área (1 km)</button><button id="empAg">📋 Pedido para o agente CS</button></div>
+            <h3>Matriz preliminar</h3>
+            <div class="lista">${e.matriz.map(m => `<div class="item"><div class="n">${esc(m.id)} · ${esc(m.tema)} <span class="tag ${cor[m.st] || ''}">${esc(m.st)}</span>${m.natureza !== 'Pendente' ? ` <span class="tag">risco ${esc(m.risco.toLowerCase())}</span>` : ''}</div><div class="m">${esc(m.evid)}</div><div class="m">→ ${esc(m.acao)}</div></div>`).join('')}</div>
+            <h3>Unidades</h3>
+            <div class="lista">${e.unidades.map(u => `<div class="item res" data-xy="${esc(JSON.stringify(u.xy))}"><div class="n">${u.id} · ${esc(u.mun)}</div><div class="m">${u.lic} licença(s) · ${u.out} outorga(s)${u.dm != null ? ` · ${fmt(u.dm)} m do ponto` : ''}</div><div class="m">${esc(u.ativ.slice(0, 2).join('; '))}</div></div>`).join('') || '<p class="rot">Sem coordenadas.</p>'}</div>
+            <h3>Escopo sugerido para o diagnóstico</h3><ol class="top">${e.escopo.map(x => `<li>${esc(x.servico)}</li>`).join('')}</ol>`;
+        box.querySelectorAll('[data-xy]').forEach(b => b.onclick = () => map.flyTo({ center: JSON.parse(b.dataset.xy), zoom: 16 }));
+        document.getElementById('empRel').onclick = () => { const w = window.open('', '_blank'); if (!w) return alert('Permita janelas pop-up para abrir o relatório.'); w.document.open(); w.document.write(RaioX.relatorioEmpreendimentoHTML(e, op)); w.document.close(); };
+        document.getElementById('empCsv').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([RaioX.csvEmpreendimento(e)], { type: 'text/csv;charset=utf-8' })); a.download = `raiox_${e.titular.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\W+/g, '_').slice(0, 40)}.csv`; a.click(); };
+        document.getElementById('empArea').onclick = () => { if (!e.unidades.length) return; abrir(); centro(e.unidades[0].xy); };
+        document.getElementById('empAg').onclick = async () => {
+            const u = e.unidades[0];
+            const t = `Raio X do empreendimento (agente CS): titular "${e.titular}"${e.cnpj ? `, CNPJ ${e.cnpj}` : ''}, município ${e.municipios[0] || ''}${u ? `, unidade principal em ${u.xy[1].toFixed(5)}, ${u.xy[0].toFixed(5)}` : ''}. Finalidade: ${fin}. Gerar pré-diagnóstico com buscas complementares e matriz.`;
+            try { await navigator.clipboard.writeText(t); alert('Pedido copiado. Cole no Claude, no projeto da CS.'); } catch (er) { prompt('Copie o pedido:', t); }
+        };
+    }
+    window.abrirEmpreendimento = abrirEmpreendimento;
+
     // abrir direto por link: ?raiox=lat,lon,raio
     map.on('load', () => {
         const q = new URLSearchParams(location.search).get('raiox');
