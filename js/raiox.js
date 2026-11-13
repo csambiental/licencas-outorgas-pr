@@ -5,7 +5,8 @@
 (function (raiz) {
     'use strict';
     const R = {};
-    const VERSAO = '1.2';
+    const VERSAO = '1.3';
+    const RAIO_EMP = 500;   // entorno imediato do empreendimento (m)
     const MAPBOX_TOKEN = 'pk.eyJ1IjoiY3NhbWJpZW50YWwiLCJhIjoiY205MWk4eHU4MDE3czJxcHNqamR4emd5aiJ9.e8K-ENRHJwXTz_FGGwYExg';
     const SGA = 'https://www.sga.pr.gov.br/sga-iap/consultarProcessoLicenciamento.do?action=exibirDadosPublicoLicenca&ucsChamador=carregarInterfaceInicial';
     const PJ = /\b(LTDA|S\.?\s?A\.?|S\/A|ME|EPP|EIRELI|CIA|COMPANHIA|COOPERATIVA|COOP|ASSOCIA[CÇ][AÃ]O|SINDICATO|INSTITUTO|FUNDA[CÇ][AÃ]O|PREFEITURA|MUNIC[IÍ]PIO|ESTADO|SECRETARIA|SERVI[CÇ]O|SANEAMENTO|SANEPAR|COPEL|IND[UÚ]STRIA|COM[EÉ]RCIO|AGRO|EMPREENDIMENTOS|INCORPORA|CONSTRU|TRANSPORT|HOSPITAL|IGREJA|CONDOM[IÍ]NIO|UNIVERSIDADE|FACULDADE|COL[EÉ]GIO|ESCOLA|POSTO|AUTO|PARTICIPA[CÇ][OÕ]ES|HOLDING|GRUPO|CENTRO|CLUBE|LOTEAMENTO|MINERA|CER[AÂ]MICA|FRIGOR|LATIC|USINA|DESTILARIA|ENERGIA|TELECOM|LOG[IÍ]STICA|DISTRIBUIDORA|ATACAD|SUPERMERCADO|MERCADO|FARM|LABORAT|CL[IÍ]NICA)\b/i;
@@ -207,7 +208,9 @@
         const P = pontosMapa(r), f5 = v => v.toFixed(5);
         const cont = r.area.contorno.length > 120 ? r.area.contorno.filter((_, i, a) => i % Math.ceil(a.length / 120) === 0).concat([r.area.contorno[0]]) : r.area.contorno;
         const caminho = `path-3+c62828-0.9+c62828-0.07(${encodeURIComponent(polyline(cont))})`;
-        const mk = n => `https://api.mapbox.com/styles/v1/mapbox/${estilo || 'light-v11'}/static/${[caminho].concat(P.slice(0, n).reverse().map(p => `pin-s+${p[2]}(${f5(p[1][0])},${f5(p[1][1])})`)).join(',')}/auto/${w}x${h}@2x?padding=40&access_token=${MAPBOX_TOKEN}`;
+        const sat = /satellite/.test(estilo || ''), caminhoS = sat ? caminho.replace('path-3+c62828-0.9+c62828-0.07', 'path-3+ffeb3b-1+ffeb3b-0.06') : caminho;
+        const dest = r.area.destaque ? [`pin-l-industry+d50000(${f5(r.area.destaque[0])},${f5(r.area.destaque[1])})`] : [];
+        const mk = n => `https://api.mapbox.com/styles/v1/mapbox/${estilo || 'light-v11'}/static/${[caminhoS].concat(P.slice(0, n).reverse().map(p => `pin-s+${p[2]}(${f5(p[1][0])},${f5(p[1][1])})`), dest).join(',')}/auto/${w}x${h}@2x?padding=${r.area.destaque ? 24 : 40}&access_token=${MAPBOX_TOKEN}`;
         let n = Math.min(P.length, 250), u = mk(n);
         while (u.length > 8000 && n > 0) { n -= 10; u = mk(Math.max(n, 0)); }
         return { url: u, pontos: Math.max(n, 0), total: P.length };
@@ -224,7 +227,7 @@
         const ptsSvg = P.slice().reverse().map(p => `<circle cx="${X(p[1][0]).toFixed(1)}" cy="${Y(p[1][1]).toFixed(1)}" r="4" fill="#${p[2]}" stroke="#fff" stroke-width="1"/>`).join('');
         return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;border:1px solid #dfe5dc;border-radius:6px;background:#fafbf9" role="img" aria-label="Croqui da área">
 <polygon points="${c.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(' ')}" fill="#c62828" fill-opacity="0.06" stroke="#c62828" stroke-width="2"/>${ptsSvg}
-<circle cx="${X(r.area.centro[0])}" cy="${Y(r.area.centro[1])}" r="5" fill="none" stroke="#1f2a1f" stroke-width="1.5"/><path d="M${X(r.area.centro[0]) - 9} ${Y(r.area.centro[1])}h18M${X(r.area.centro[0])} ${Y(r.area.centro[1]) - 9}v18" stroke="#1f2a1f" stroke-width="1.2"/>
+${r.area.destaque ? `<path transform="translate(${X(r.area.destaque[0]).toFixed(1)},${Y(r.area.destaque[1]).toFixed(1)})" d="M0 0C-9 -12 -11 -16 -11 -21A11 11 0 0 1 11 -21C11 -16 9 -12 0 0Z" fill="#d50000" stroke="#fff" stroke-width="2"/><circle cx="${X(r.area.destaque[0]).toFixed(1)}" cy="${(Y(r.area.destaque[1]) - 21).toFixed(1)}" r="4" fill="#fff"/>` : ''}<circle cx="${X(r.area.centro[0])}" cy="${Y(r.area.centro[1])}" r="5" fill="none" stroke="#1f2a1f" stroke-width="1.5"/><path d="M${X(r.area.centro[0]) - 9} ${Y(r.area.centro[1])}h18M${X(r.area.centro[0])} ${Y(r.area.centro[1]) - 9}v18" stroke="#1f2a1f" stroke-width="1.2"/>
 <g transform="translate(${w - 40},44)"><path d="M0 -22L7 0H-7Z" fill="#1f2a1f"/><text y="14" text-anchor="middle" font-size="12" fill="#1f2a1f">N</text></g>
 <g transform="translate(40,${h - 18})"><rect width="${(barra * esc).toFixed(1)}" height="5" fill="#1f2a1f"/><text x="${(barra * esc + 6).toFixed(1)}" y="6" font-size="11" fill="#5f6b5f">${barra >= 1000 ? barra / 1000 + ' km' : barra + ' m'}</text></g>
 <text x="${w - 12}" y="${h - 12}" text-anchor="end" font-size="10" fill="#5f6b5f">Croqui sem fundo de mapa · coordenadas declaradas no IAT</text></svg>`;
@@ -365,10 +368,14 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         U = U.map(u => {
             const xy = [u.m.reduce((s, p) => s + p.xy[0], 0) / u.m.length, u.m.reduce((s, p) => s + p.xy[1], 0) / u.m.length];
             const L = u.m.filter(p => p.n);
-            return { xy, mun: u.m[0].mun, cod: u.m[0].cod, lic: L.length, out: u.m.length - L.length, ativ: [...new Set(L.filter(p => p.si !== 'Vencida').map(p => p.a))], membros: u.m };
+            // ponto de localização declarado ao IAT: o registro consultado, senão a licença vigente mais recente, senão qualquer licença/outorga
+            const ano = p => { const d = dataBR(p.em) || dataBR(p.pub); return d ? +d : 0; };
+            const cand = ref0 && u.m.find(p => dist(p.xy, ref0) <= 30) || L.filter(p => p.si !== 'Vencida').sort((a, b) => ano(b) - ano(a))[0] || L[0] || u.m[0];
+            const decl = { xy: cand.xy, fonte: cand.n ? `${cand.s} nº ${cand.d} – ${cand.a} (IAT/SGA)` : `Outorga ${cand.num || 's/ nº'} – ${cand.interf || cand.tipo} (SIGARH)` };
+            return { xy, decl, mun: u.m[0].mun, cod: u.m[0].cod, lic: L.length, out: u.m.length - L.length, ativ: [...new Set(L.filter(p => p.si !== 'Vencida').map(p => p.a))], membros: u.m };
         });
         U.sort((a, b) => ref0 ? Math.min(...a.membros.map(p => dist(p.xy, ref0))) - Math.min(...b.membros.map(p => dist(p.xy, ref0))) : (b.lic + b.out) - (a.lic + a.out));
-        U.forEach((u, i) => { u.id = 'U' + (i + 1); u.dm = ref0 ? Math.round(dist(u.xy, ref0)) : null; u.membros.forEach(p => p._u = u.id); delete u.membros; });
+        U.forEach((u, i) => { u.id = 'U' + (i + 1); u.dm = ref0 ? Math.round(dist(u.decl.xy, ref0)) : null; u.membros.forEach(p => p._u = u.id); delete u.membros; });
         const sem = { lic: lic.filter(x => !x.xy).length, out: out.filter(x => !x.xy).length };
 
         // ------------- matriz preliminar (padrão da matriz de conformidade do Modelo CS)
@@ -418,10 +425,10 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         if (RX_EMI.test(atv)) docs.push('E. Emissões: laudos de chaminé, consumo de combustíveis');
         docs.push('H. Riscos: AVCB, PAE, tanques e produtos perigosos', 'I. Passivos: autos de infração, TACs, notificações, processos');
 
-        // entorno imediato da unidade principal (1 km)
+        // entorno imediato da unidade principal (raio RAIO_EMP a partir do ponto declarado)
         let entorno = null;
         if (U.length) {
-            const a = R.area({ tipo: 'circulo', centro: U[0].xy, raio: 1000 });
+            const a = R.area({ tipo: 'circulo', centro: U[0].decl.xy, raio: RAIO_EMP });
             const r1 = R.calcular(a, dados.filter(d => R.municipiosDaArea(a, munGeo).includes(d.cod)), munGeo, {});
             entorno = { k: r1.k, achados: r1.achados.filter(x => x.risco).map(x => x.t) };
         }
@@ -429,15 +436,15 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         const base = (dados.find(d => d.cod === ref.cod) || dados[0] || {}).atualizado || '';
         const titular = (lic[0] && lic[0].n) || (out[0] && out[0].nome) || ref.nome;
         const ct = lic.concat(out).map(x => x.ct).find(Boolean) || null;
-        const centro = U.length ? U[0].xy : ref0 || [0, 0];
-        const dLat = 1000 / KY, dLon = 1000 / KX(centro[1] || -24);
+        const centro = U.length ? U[0].decl.xy : ref0 || [0, 0];
+        const dLat = RAIO_EMP / KY, dLon = RAIO_EMP / KX(centro[1] || -24);
         return {
             tipo: 'empreendimento', versao: VERSAO, emitido: new Date().toLocaleDateString('pt-BR'), base, finalidade: op.finalidade || 'Diagnóstico', cliente: op.cliente || '',
             titular, pf, vinculo, cnpj: op.cnpj || (ct && ct.cnpj) || '', ct: ct ? { rs: ct.rs, nf: ct.nf, cnpj: ct.cnpj, sit: ct.sit, porte: ct.porte, cnae: ct.cnae, end: [ct.end, ct.bai, ct.cep].filter(Boolean).join(' – '), mun: ct.mun, tel: ct.tel, email: ct.email } : null,
             municipios: munNomes, unidades: U, semCoord: sem, lic, out,
             k: { lic: lic.length, lic_vig: vig.length, lic_venc6: v6.length, lic_vencidas: venc.length, out: out.length, out_val: out.filter(x => !/Vencida|Irregular/.test(x.situ)).length, out_prob: out.filter(x => /Vencida|Irregular/.test(x.situ)).length, out_venc6: o6.length, vazao_capt_m3h: Math.round(captOk.reduce((s, x) => s + num(x.vazao), 0) * 10) / 10, unidades: U.length },
             matriz: M, exposicao, pontos: pts, escopo, docs, entorno,
-            area: { tipo: 'circulo', centro, raio: 1000, contorno: Array.from({ length: 49 }, (_, i) => { const t = i / 48 * 2 * Math.PI; return [centro[0] + Math.cos(t) * dLon, centro[1] + Math.sin(t) * dLat]; }) }
+            area: { tipo: 'circulo', centro, raio: RAIO_EMP, destaque: U.length ? U[0].decl.xy : ref0, contorno: Array.from({ length: 73 }, (_, i) => { const t = i / 72 * 2 * Math.PI; return [centro[0] + Math.cos(t) * dLon, centro[1] + Math.sin(t) * dLat]; }) }
         };
     };
 
@@ -474,12 +481,12 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         doM(add, 'CAD-01', 'CTF/APP regular e RAPP entregue (IBAMA)');
         doM(add, 'RES-01', 'PGRS implantado e destinação rastreada (MTR/CDF)');
         doM(add, 'PAS-01', 'Sem embargos, autos de infração ou TACs pendentes');
-        add = grupo('Território e entorno (1 km)');
+        add = grupo(`Território e entorno (${RAIO_EMP} m)`);
         doM(add, 'FLO-03', 'Fora de UC/zona de amortecimento e APP preservada');
         if (e.entorno) {
             const k = e.entorno.k, pr = (k.out_vencidas || 0) + (k.out_irreg || 0);
-            add('Outorgas vencidas ou irregulares no entorno', pr ? 'at' : 'ok', `${pr} outorga(s) de terceiros vencida(s)/irregular(es) a até 1 km`);
-            add('Pressão sobre a água no entorno', k.vazao_capt_m3h >= 100 ? 'at' : 'ok', `${k.out_val} outorga(s) válida(s), ${String(k.vazao_capt_m3h).replace('.', ',')} m³/h de captação outorgada a até 1 km`);
+            add('Outorgas vencidas ou irregulares no entorno', pr ? 'at' : 'ok', `${pr} outorga(s) de terceiros vencida(s)/irregular(es) a até ${RAIO_EMP} m`);
+            add('Pressão sobre a água no entorno', k.vazao_capt_m3h >= 50 ? 'at' : 'ok', `${k.out_val} outorga(s) válida(s), ${String(k.vazao_capt_m3h).replace('.', ',')} m³/h de captação outorgada a até ${RAIO_EMP} m`);
         } else add('Entorno imediato', 'na', 'Sem unidade georreferenciada para calcular o entorno');
         return G;
     };
@@ -494,9 +501,9 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         op = op || {};
         const G = R.checklistEmpreendimento(e), N = R.pendenciasEmpreendimento(e), todos = G.flatMap(g => g.itens);
         const cont = s => todos.filter(i => i.st === s).length, avaliados = todos.filter(i => i.st !== 'na' && i.st !== 'pd').length;
-        const u1 = e.unidades[0], perto = x => x.xy && u1 && dist(x.xy, u1.xy) <= 1500;
+        const u1 = e.unidades[0], perto = x => x.xy && u1 && dist(x.xy, u1.decl.xy) <= RAIO_EMP * 1.4;
         const vista = { area: e.area, lic: e.lic.filter(perto), out: e.out.filter(perto) };
-        const mapaPts = R.mapaURL(vista, 900, 520), mapaSat = R.mapaURL({ area: e.area, lic: [], out: [] }, 640, 900, 'satellite-streets-v12');
+        const mapaPts = R.mapaURL(vista, 900, 620, 'satellite-streets-v12'), mapaSat = R.mapaURL({ area: e.area, lic: [], out: [] }, 640, 900, 'satellite-streets-v12');
         const agora = new Date(), dataHora = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }).replace(',', '');
         const nome = e.titular, mun = e.municipios[0] || (u1 && u1.mun) || '–';
         const codigo = codigoConf({ t: nome, b: e.base, k: e.k, m: e.matriz.map(m => [m.id, m.st]), d: agora.toISOString().slice(0, 10) });
@@ -517,7 +524,7 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
             `${esc(x.interf || x.tipo)}${x.fin ? `<br><span class="hint">${esc(x.fin)}</span>` : ''}`, `<span class="mono">${esc(x.num || '–')}</span><br><span class="hint">${esc(x.doc || '')}${x.situ ? ' · ' + esc(x.situ) : ''}</span>`,
             esc(x.vazao || '–'), `${esc(x.corpo || '–')}<br><span class="hint">${esc(x.bacia || '')}</span>`, /Irregular/.test(x.situ) ? '<b style="color:#c62828">irregular</b>' : venc(x.venc)]), 'Nenhuma outorga do titular localizada na base pública.');
         const tu = tab(['Unidade', 'Município', 'Coordenadas (lat, long – SIRGAS 2000)', 'Licenças', 'Outorgas', 'Atividades vigentes'], e.unidades.map(u => [`<b>${u.id}</b>${u.dm != null ? `<br><span class="hint">${F(u.dm)} m do ponto consultado</span>` : ''}`, esc(u.mun),
-            `<span class="mono">${u.xy[1].toFixed(5)}, ${u.xy[0].toFixed(5)}</span><br><a href="https://www.google.com/maps?q=${u.xy[1].toFixed(6)},${u.xy[0].toFixed(6)}" target="_blank" rel="noopener">ver no Google Maps ↗</a>`, u.lic, u.out, `<span class="hint">${esc(u.ativ.slice(0, 3).join('; ') || '–')}</span>`]), 'Nenhum registro do titular com coordenada.');
+            `<span class="mono">${u.decl.xy[1].toFixed(5)}, ${u.decl.xy[0].toFixed(5)}</span><br><a href="https://www.google.com/maps?q=${u.decl.xy[1].toFixed(6)},${u.decl.xy[0].toFixed(6)}" target="_blank" rel="noopener">ver no Google Maps ↗</a>`, u.lic, u.out, `<span class="hint">${esc(u.ativ.slice(0, 3).join('; ') || '–')}</span>`]), 'Nenhum registro do titular com coordenada.');
         const PF = e.pf;
         const contato = op.contatos && e.ct ? [e.ct.tel, e.ct.email].filter(Boolean).join(' · ') : '';
         const corExp = { Alta: '#c62828', 'Média': '#ef6c00', Baixa: '#2e7d32' }[e.exposicao];
@@ -599,10 +606,10 @@ ${sec('Detalhes do empreendimento', 'Identificação, cadastro e localização d
   ${e.ct && e.ct.nf ? card('Nome fantasia', esc(e.ct.nf)) : ''}${e.ct && e.ct.cnae ? card('Atividade principal (CNAE)', esc(e.ct.cnae), '', 'l2') : ''}
   ${e.ct && (e.ct.porte || e.ct.sit) ? card('Porte · situação na Receita', esc([e.ct.porte, e.ct.sit].filter(Boolean).join(' · '))) : ''}
   ${!PF && e.ct && e.ct.end ? card('Endereço (Receita Federal)', esc(e.ct.end), '', 'l2') : ''}${contato ? card('Contato (uso interno)', esc(contato), '', 'l3') : ''}
-  ${card('Município(s)', esc(e.municipios.join(', ') || '–'))}${card('Unidade principal', u1 ? `${u1.id} · ${esc(u1.mun)}` : '–', u1 ? `<span class="mono">${u1.xy[1].toFixed(5)}, ${u1.xy[0].toFixed(5)}</span>` : '')}
+  ${card('Município(s)', esc(e.municipios.join(', ') || '–'))}${card('Ponto declarado (unidade principal)', u1 ? `<span class="mono">${u1.decl.xy[1].toFixed(5)}, ${u1.decl.xy[0].toFixed(5)}</span>` : '–', u1 ? `${u1.id} · ${esc(u1.mun)} · <a href="https://www.google.com/maps/@${u1.decl.xy[1].toFixed(6)},${u1.decl.xy[0].toFixed(6)},300m/data=!3m1!1e3" target="_blank" rel="noopener">satélite ↗</a>` : '')}
   ${card('Base de dados', esc(e.base || '–'), `motor Raio-X v${e.versao}`)}${card('Vínculo dos registros', esc(e.vinculo), '', 'l3')}</div>
   ${u1 ? `<img class="mapa" src="${esc(mapaPts.url)}" alt="Localização da unidade principal" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div style="display:none">${R.croquiSVG(vista)}</div>
-  <div class="leg">Círculo vermelho: 1 km em torno da unidade principal.<i style="background:#2e7d32"></i>licença vigente<i style="background:#e65100"></i>vence em 6 meses / água sem outorga<i style="background:#9e9e9e"></i>licença vencida<i style="background:#0277bd"></i>outorga válida<i style="background:#c62828"></i>outorga vencida/irregular</div>` : '<p class="hint">Sem registro do titular com coordenada – localização a confirmar com o cliente.</p>'}`)}
+  <div class="leg"><i style="background:#d50000;border-radius:50% 50% 50% 0"></i><b>ponto de localização declarado</b> (${esc(u1.decl.fonte)}) · círculo amarelo: ${RAIO_EMP} m de entorno sobre imagem de satélite (Mapbox/Maxar).<i style="background:#2e7d32"></i>licença vigente<i style="background:#e65100"></i>vence em 6 meses / água sem outorga<i style="background:#9e9e9e"></i>licença vencida<i style="background:#0277bd"></i>outorga válida<i style="background:#c62828"></i>outorga vencida/irregular</div>` : '<p class="hint">Sem registro do titular com coordenada – localização a confirmar com o cliente.</p>'}`)}
 
 ${sec('Resultado da análise', 'Resumo dos indicadores consultados', `
   <div class="placar"><div class="g"><b>${cont('ok')}/${avaliados}</b><span>indicadores verificáveis em acordo</span></div><div class="ok"><b>${cont('ok')}</b><span>✓ em acordo</span></div><div class="at"><b>${cont('at')}</b><span>! atenção</span></div><div class="no"><b>${cont('no')}</b><span>✕ em desacordo</span></div><div class="pd"><b>${cont('pd')}</b><span>… pendentes – Fase 2</span></div></div>
@@ -614,9 +621,9 @@ ${sec('Licenciamento ambiental', `Licenças do titular no IAT (SGA/SIA) – ${F(
 
 ${sec('Recursos hídricos', `Outorgas e declarações do titular no SIGARH – ${F(e.out.length)} registro(s)`, to, e.lic.length + e.out.length > 14)}
 
-${sec('Unidades e entorno', 'Unidades físicas do titular e situação no raio de 1 km da unidade principal', `
+${sec('Unidades e entorno', `Unidades físicas do titular e situação no raio de ${RAIO_EMP} m do ponto declarado`, `
   ${tu}${e.semCoord.lic + e.semCoord.out ? `<p class="hint">${e.semCoord.lic} licença(s) e ${e.semCoord.out} outorga(s) do titular sem coordenada no IAT não entram no mapa.</p>` : ''}
-  ${e.entorno ? `<h4>Entorno imediato (1 km, todos os titulares)</h4><div class="cds n4">${card('Licenças vigentes', F(e.entorno.k.lic_vig))}${card('Outorgas válidas', F(e.entorno.k.out_val))}${card('Captação outorgada', F(e.entorno.k.vazao_capt_m3h), 'm³/h')}${card('Outorgas vencidas/irregulares', F((e.entorno.k.out_vencidas || 0) + (e.entorno.k.out_irreg || 0)))}</div>
+  ${e.entorno ? `<h4>Entorno imediato (${RAIO_EMP} m, todos os titulares)</h4><div class="cds n4">${card('Licenças vigentes', F(e.entorno.k.lic_vig))}${card('Outorgas válidas', F(e.entorno.k.out_val))}${card('Captação outorgada', F(e.entorno.k.vazao_capt_m3h), 'm³/h')}${card('Outorgas vencidas/irregulares', F((e.entorno.k.out_vencidas || 0) + (e.entorno.k.out_irreg || 0)))}</div>
   ${e.entorno.achados.length ? e.entorno.achados.slice(0, 5).map(t => `<div class="obs">${esc(t)}</div>`).join('') : ''}` : ''}`)}
 
 ${sec('Pendências e adequações sugeridas', 'Base para o plano de adequação, o escopo da Fase 2 e o orçamento', `
@@ -652,7 +659,7 @@ ${sec('Metodologia e fontes', 'Como esta análise foi feita', `
         const u = e.unidades[0];
         return { linhas, pendentes: pend, identificacao: {
             'Cliente (razão social)': e.titular, 'CNPJ': e.cnpj || '', 'Nome fantasia': (e.ct && e.ct.nf) || '', 'Atividade principal (CNAE)': (e.ct && e.ct.cnae) || '', 'Porte': (e.ct && e.ct.porte) || '',
-            'Unidade avaliada': u ? `${u.id} – ${u.mun}` : '', 'Município': e.municipios.join(', '), 'Coordenadas (lat, lon)': u ? `${u.xy[1].toFixed(5)}, ${u.xy[0].toFixed(5)}` : '',
+            'Unidade avaliada': u ? `${u.id} – ${u.mun}` : '', 'Município': e.municipios.join(', '), 'Coordenadas (lat, lon)': u ? `${u.decl.xy[1].toFixed(5)}, ${u.decl.xy[0].toFixed(5)}` : '',
             'Licenças e outorgas principais': e.lic.filter(x => x.si !== 'Vencida').slice(0, 6).map(x => `${x.s} ${x.d} (${x.a}) até ${x.va}`).concat(e.out.filter(x => !/Vencida|Irregular/.test(x.situ)).slice(0, 4).map(x => `${x.num} – ${x.interf || x.tipo}`)).join('; '),
             'Raio X do empreendimento (data da base e exposição preliminar)': `Base de ${e.base}; exposição preliminar ${e.exposicao}; ${e.k.unidades} unidade(s), ${e.k.lic_vig} licenças vigentes, ${e.k.out_val} outorgas válidas` } };
     };

@@ -127,7 +127,7 @@ if (MODO_EMP) {
     op.soMunicipio = !!args['so-municipio']; op.cnpj = args.cnpj || '';
     r = RaioX.empreendimento(ref, dados, munGeo, op);
     if (r.unidades.length) {   // vizinhos para o entorno de 1 km
-        const viz = RaioX.municipiosDaArea(RaioX.area({ tipo: 'circulo', centro: r.unidades[0].xy, raio: 1000 }), munGeo).filter(c => !cods.includes(c));
+        const viz = RaioX.municipiosDaArea(RaioX.area({ tipo: 'circulo', centro: r.unidades[0].decl.xy, raio: 500 }), munGeo).filter(c => !cods.includes(c));
         if (viz.length) { dados = dados.concat(carregar(viz)); cods = cods.concat(viz); r = RaioX.empreendimento(ref, dados, munGeo, op); }
     }
 } else r = RaioX.calcular(area, dados, munGeo, op);

@@ -170,7 +170,7 @@
         }
         let e = RaioX.empreendimento(ref, dados, MUNS, op);
         if (e.unidades.length) {
-            const viz = RaioX.municipiosDaArea(RaioX.area({ tipo: 'circulo', centro: e.unidades[0].xy, raio: 1000 }), MUNS).filter(c => !cods.includes(c));
+            const viz = RaioX.municipiosDaArea(RaioX.area({ tipo: 'circulo', centro: e.unidades[0].decl.xy, raio: 500 }), MUNS).filter(c => !cods.includes(c));
             if (viz.length) { const mais = await Promise.all(viz.map(c => carregarMun(c))); await anexar(mais); dados = dados.concat(mais); e = RaioX.empreendimento(ref, dados, MUNS, op); }
         }
         return e;
@@ -195,15 +195,15 @@
             <h3>Matriz preliminar</h3>
             <div class="lista">${e.matriz.map(m => `<div class="item"><div class="n">${esc(m.id)} · ${esc(m.tema)} <span class="tag ${cor[m.st] || ''}">${esc(m.st)}</span>${m.natureza !== 'Pendente' ? ` <span class="tag">risco ${esc(m.risco.toLowerCase())}</span>` : ''}</div><div class="m">${esc(m.evid)}</div><div class="m">→ ${esc(m.acao)}</div></div>`).join('')}</div>
             <h3>Unidades</h3>
-            <div class="lista">${e.unidades.map(u => `<div class="item res" data-xy="${esc(JSON.stringify(u.xy))}"><div class="n">${u.id} · ${esc(u.mun)}</div><div class="m">${u.lic} licença(s) · ${u.out} outorga(s)${u.dm != null ? ` · ${fmt(u.dm)} m do ponto` : ''}</div><div class="m">${esc(u.ativ.slice(0, 2).join('; '))}</div></div>`).join('') || '<p class="rot">Sem coordenadas.</p>'}</div>
+            <div class="lista">${e.unidades.map(u => `<div class="item res" data-xy="${esc(JSON.stringify(u.decl.xy))}"><div class="n">${u.id} · ${esc(u.mun)}</div><div class="m">${u.lic} licença(s) · ${u.out} outorga(s)${u.dm != null ? ` · ${fmt(u.dm)} m do ponto` : ''}</div><div class="m">${esc(u.ativ.slice(0, 2).join('; '))}</div></div>`).join('') || '<p class="rot">Sem coordenadas.</p>'}</div>
             <h3>Escopo sugerido para o diagnóstico</h3><ol class="top">${e.escopo.map(x => `<li>${esc(x.servico)}</li>`).join('')}</ol>`;
         box.querySelectorAll('[data-xy]').forEach(b => b.onclick = () => map.flyTo({ center: JSON.parse(b.dataset.xy), zoom: 16 }));
         document.getElementById('empRel').onclick = () => { const w = window.open('', '_blank'); if (!w) return alert('Permita janelas pop-up para abrir o relatório.'); w.document.open(); w.document.write(RaioX.relatorioEmpreendimentoHTML(e, op)); w.document.close(); };
         document.getElementById('empCsv').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([RaioX.csvEmpreendimento(e)], { type: 'text/csv;charset=utf-8' })); a.download = `raiox_${e.titular.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\W+/g, '_').slice(0, 40)}.csv`; a.click(); };
-        document.getElementById('empArea').onclick = () => { if (!e.unidades.length) return; abrir(); centro(e.unidades[0].xy); };
+        document.getElementById('empArea').onclick = () => { if (!e.unidades.length) return; abrir(); centro(e.unidades[0].decl.xy); };
         document.getElementById('empAg').onclick = async () => {
             const u = e.unidades[0];
-            const t = `Raio X do empreendimento (agente CS): titular "${e.titular}"${e.cnpj ? `, CNPJ ${e.cnpj}` : ''}, município ${e.municipios[0] || ''}${u ? `, unidade principal em ${u.xy[1].toFixed(5)}, ${u.xy[0].toFixed(5)}` : ''}. Finalidade: ${fin}. Gerar pré-diagnóstico com buscas complementares e matriz.`;
+            const t = `Raio X do empreendimento (agente CS): titular "${e.titular}"${e.cnpj ? `, CNPJ ${e.cnpj}` : ''}, município ${e.municipios[0] || ''}${u ? `, unidade principal em ${u.decl.xy[1].toFixed(5)}, ${u.decl.xy[0].toFixed(5)}` : ''}. Finalidade: ${fin}. Gerar pré-diagnóstico com buscas complementares e matriz.`;
             try { await navigator.clipboard.writeText(t); alert('Pedido copiado. Cole no Claude, no projeto da CS.'); } catch (er) { prompt('Copie o pedido:', t); }
         };
     }
@@ -251,13 +251,13 @@
             const atv = e.lic.map(x => `${x.a} ${x.e || ''}`).join(' | ');
             const tip = TIPOS_TEC.filter(([, rx]) => rx.test(atv)).map(([t]) => t);
             const pre = RaioX.preenchimentoMatriz(e);
-            const pacote = { titular: e.titular, cnpj: e.cnpj || '', pessoa: e.pf ? 'física' : 'jurídica', municipios: e.municipios, unidades: e.unidades.map(u => ({ id: u.id, municipio: u.mun, lat: +u.xy[1].toFixed(6), lon: +u.xy[0].toFixed(6) })), tipologias: tip, base: e.base, exposicao: e.exposicao, preenchimento: pre };
+            const pacote = { titular: e.titular, cnpj: e.cnpj || '', pessoa: e.pf ? 'física' : 'jurídica', municipios: e.municipios, unidades: e.unidades.map(u => ({ id: u.id, municipio: u.mun, lat: +u.decl.xy[1].toFixed(6), lon: +u.decl.xy[0].toFixed(6) })), tipologias: tip, base: e.base, exposicao: e.exposicao, preenchimento: pre };
             const blob = URL.createObjectURL(new Blob([JSON.stringify(pacote, null, 1)], { type: 'application/json' }));
             const slug = e.titular.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40);
             escrever(w, `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Fase 2 – diagnóstico completo – ${esc(e.titular)}</title><style>body{font-family:"Segoe UI",Roboto,Arial,sans-serif;max-width:760px;margin:24px auto;color:#1f2a1f;padding:0 16px}h1{color:#1b5e20;font-size:20px}h2{color:#2e7d32;font-size:15px;margin-top:22px}td{padding:4px 8px;border-bottom:1px solid #eef1ec;font-size:13px;vertical-align:top}td:first-child{color:#5f6b5f;width:38%}code{background:#f5f7f4;padding:2px 6px;border-radius:4px}a.b{display:inline-block;margin-top:8px;padding:8px 14px;background:#2e7d32;color:#fff;border-radius:6px;text-decoration:none}li{margin:6px 0;font-size:13px}</style></head><body>
 <img src="${esc(logo)}" style="height:48px"><h1>Fase 2 – abertura do diagnóstico completo</h1><p style="font-size:13px;color:#5f6b5f">A Fase 1 (dados públicos) já está pronta. Na Fase 2, documentos, informações complementares e vistoria entram na matriz do cliente, e o relatório é reemitido como um único relatório unificado.</p>
 <table><tr><td>Titular</td><td>${esc(e.titular)}</td></tr>${e.cnpj ? `<tr><td>CNPJ</td><td>${esc(e.cnpj)}</td></tr>` : ''}<tr><td>Pessoa</td><td>${e.pf ? 'Física (análise restrita ao município)' : 'Jurídica'}</td></tr><tr><td>Município(s)</td><td>${esc(e.municipios.join(', '))}</td></tr>
-<tr><td>Unidades</td><td>${e.unidades.map(u => `${u.id} – ${esc(u.mun)} (${u.xy[1].toFixed(5)}, ${u.xy[0].toFixed(5)})`).join('<br>') || 'sem coordenada'}</td></tr><tr><td>Tipologias sugeridas</td><td>${esc(tip.join(', ') || 'só requisitos gerais')}</td></tr>
+<tr><td>Unidades</td><td>${e.unidades.map(u => `${u.id} – ${esc(u.mun)} (${u.decl.xy[1].toFixed(5)}, ${u.decl.xy[0].toFixed(5)})`).join('<br>') || 'sem coordenada'}</td></tr><tr><td>Tipologias sugeridas</td><td>${esc(tip.join(', ') || 'só requisitos gerais')}</td></tr>
 <tr><td>Raio X</td><td>Base de ${esc(e.base)} · exposição preliminar ${esc(e.exposicao)} · ${pre.linhas.length} requisito(s) pré-preenchidos, ${pre.pendentes.length} pendência(s) para a vistoria</td></tr></table>
 <a class="b" href="${blob}" download="diagnostico_${slug}.json">⬇ Baixar pré-preenchimento da matriz</a>
 <h2>Próximos passos</h2><ol><li>No repositório privado <b>diagnosticos-cs</b>: Actions → <b>Novo cliente (Raio X + matriz)</b> → Run workflow.</li>
