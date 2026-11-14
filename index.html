@@ -6,7 +6,7 @@
     <title>Licenças e Outorgas do Paraná – CS Consultoria Ambiental</title>
     <meta name="description" content="Licenças ambientais (IAT – SGA/SIA) e outorgas de água (SIGARH) de todos os municípios do Paraná, em mapa e por município.">
     <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css">
-    <link rel="stylesheet" href="css/style.css?v=4">
+    <link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body>
     <header class="topo">
@@ -15,6 +15,7 @@
             <h1>Licenças e Outorgas do Paraná</h1>
             <p id="sub">Licenças ambientais do IAT (SGA/SIA) e outorgas de água do SIGARH, município por município</p>
         </div>
+        <button id="btnRaioX" class="area raiox" title="Relatório de licenças e outorgas num raio ou polígono">🎯 Raio X da área</button>
         <button id="btnArea" class="area" title="Contatos das empresas – uso interno da CS">🔒 Área CS</button>
         <div class="busca">
             <form id="formBusca"><input id="buscaMun" list="listaMun" placeholder="Município, titular, nº da licença, protocolo ou outorga…" autocomplete="off"><button type="submit">Buscar</button></form>
@@ -47,6 +48,7 @@
                 <p class="dica">Clique num município no mapa (ou busque pelo nome) para ver as licenças e outorgas dele. Aproxime o mapa para ver cada licença e outorga.</p>
             </div>
             <div id="municipio" hidden></div>
+            <div id="raiox" hidden></div>
         </aside>
     </main>
 
@@ -73,6 +75,9 @@
     </footer>
 
     <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-    <script src="js/app.js?v=4"></script>
+    <script src="js/app.js?v=7"></script>
+    <script src="js/vendor/qrcode.js"></script>
+    <script src="js/raiox.js?v=8"></script>
+    <script src="js/raiox-ui.js?v=6"></script>
 </body>
 </html>

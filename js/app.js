@@ -56,11 +56,11 @@ function adicionarCamadas() {
         Object.entries(COR_OUT).map(([k, c]) => `<div class="it"><span class="pt" style="background:${c}"></span>${k}</div>`).join('') +
         '<div class="it"><span class="pt" style="background:#fff;box-shadow:0 0 0 2px #c62828"></span>Contorno vermelho: vencida/irregular · laranja: vence em 6 meses</div><div class="rot">Pontos aparecem ao aproximar o mapa</div>';
     for (const id of ['lic-vig', 'lic-venc', 'out-val', 'out-prob']) {
-        map.on('click', id, e => { e.originalEvent._pt = true; popup(e.features[0], e.lngLat); });
+        map.on('click', id, e => { if (window.modoRaioX) return; e.originalEvent._pt = true; popup(e.features[0], e.lngLat); });
         map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer');
         map.on('mouseleave', id, () => map.getCanvas().style.cursor = '');
     }
-    map.on('click', 'mun-fill', e => { if (e.originalEvent._pt) return; abrirMunicipio(e.features[0].properties.cod, false); });
+    map.on('click', 'mun-fill', e => { if (e.originalEvent._pt || window.modoRaioX) return; abrirMunicipio(e.features[0].properties.cod, false); });
     document.querySelectorAll('#camadas input[data-c]').forEach(i => i.addEventListener('change', () => map.setLayoutProperty(i.dataset.c, 'visibility', i.checked ? 'visible' : 'none')));
     document.getElementById('satelite').addEventListener('change', e => {
         if (e.target.checked) { if (!map.getSource('sat')) map.addSource('sat', { type: 'raster', url: 'mapbox://mapbox.satellite', tileSize: 256 }); map.addLayer({ id: 'sat', type: 'raster', source: 'sat' }, 'mun-fill'); }
@@ -217,7 +217,7 @@ function itemLic(x) {
         <div class="m">${esc(x.a)}${x.e && x.e !== x.a ? ' – ' + esc(x.e) : ''}</div>
         <div class="m">${esc(x.s)} nº ${esc(x.d)} · emissão ${esc(x.em) || '–'} · validade ${esc(x.va) || '–'}</div>
         ${x.oc ? `<div class="m">💧 Outorga de captação: ${esc(x.oc)}</div>` : ''}
-        <div class="acoes">${x.xy ? `<button data-xy="${esc(JSON.stringify(x.xy))}">📍 ver no mapa${x.lo ? ' (aprox.)' : ''}</button>` : '<span class="m">sem coordenada</span>'}<a href="${linkSGA(x)}" target="_blank" rel="noopener">📄 licença no SGA (PDF)</a></div></div>`;
+        <div class="acoes">${x.xy ? `<button data-xy="${esc(JSON.stringify(x.xy))}">📍 ver no mapa${x.lo ? ' (aprox.)' : ''}</button>` : '<span class="m">sem coordenada</span>'}<a href="${linkSGA(x)}" target="_blank" rel="noopener">📄 licença no SGA (PDF)</a><button class="btnEmp" data-nome="${esc(x.n)}" data-c="${dadosMun.cod}" data-p="${esc(x.p)}" ${x.xy ? `data-xy="${esc(JSON.stringify(x.xy))}"` : ''}>🔎 Raio X do empreendimento</button></div></div>`;
 }
 function itemOut(x) {
     return `<div class="item" style="border-left-color:${COR_OUT[x.tipo] || '#90a4ae'}">
@@ -225,7 +225,7 @@ function itemOut(x) {
         <div class="m">${esc(x.interf || x.tipo)}${x.emp ? ' · ' + esc(x.emp) : ''}</div>
         <div class="m">${esc(x.doc)} nº ${esc(x.num) || '–'} · vencimento ${esc(x.venc) || '–'}${x.vazao ? ' · ' + esc(x.vazao) + ' m³/h' : ''}</div>
         ${x.fin ? `<div class="m">Finalidade: ${esc(x.fin)}</div>` : ''}
-        <div class="acoes">${x.xy ? `<button data-xy="${esc(JSON.stringify(x.xy))}">📍 ver no mapa</button>` : '<span class="m">sem coordenada</span>'}</div></div>`;
+        <div class="acoes">${x.xy ? `<button data-xy="${esc(JSON.stringify(x.xy))}">📍 ver no mapa</button>` : '<span class="m">sem coordenada</span>'}<button class="btnEmp" data-nome="${esc(x.nome)}" data-c="${dadosMun.cod}" data-num="${esc(x.num || '')}" ${x.xy ? `data-xy="${esc(JSON.stringify(x.xy))}"` : ''}>🔎 Raio X do empreendimento</button></div></div>`;
 }
 
 // ---------------- Área CS: contatos criptografados (só abre com a senha da CS)
@@ -288,10 +288,10 @@ function popup(f, ll) {
     let h;
     if (f.layer.id.startsWith('lic')) h = `<div class="pop"><h4>${esc(p.n)}</h4><table>${lin('Atividade', p.a)}${lin('Atividade específica', p.e !== p.a ? p.e : '')}${lin('Modalidade', `${p.s} – ${p.g}`)}
         ${lin('Nº do documento', p.d)}${lin('Emissão', p.em)}${lin('Validade', p.va)}${lin('Situação', p.si)}${lin('Outorga de captação', p.oc)}${lin('Protocolo', p.p)}${lin('Localização', p.lo ? 'Aproximada – ponto da outorga de água do mesmo titular' : 'Cadastrada no licenciamento (IAT)')}</table>
-        <a href="${linkSGA(p)}" target="_blank" rel="noopener">📄 Abrir a licença no SGA (PDF) ↗</a></div>`;
+        <a href="${linkSGA(p)}" target="_blank" rel="noopener">📄 Abrir a licença no SGA (PDF) ↗</a>${window.blocoEmitir ? blocoEmitir({ nome: p.n, c: p.c, p: p.p, xy: [ll.lng, ll.lat] }) : ''}</div>`;
     else h = `<div class="pop"><h4>${esc(p.nome)}</h4><table>${lin('Empreendimento', p.emp)}${lin('Tipo', p.interf || p.tipo)}${lin('Documento', p.doc)}${lin('Nº', p.num)}
         ${lin('Situação', p.situ + (p.st && p.st !== p.situ ? ` (${p.st})` : ''))}${lin('Publicação', p.pub)}${lin('Vencimento', p.venc)}${lin('Finalidade', p.fin)}
-        ${lin('Vazão máxima', p.vazao ? p.vazao + ' m³/h' : '')}${lin('Corpo hídrico / aquífero', p.corpo)}${lin('Bacia', p.bacia)}${lin('Setor', p.setor)}</table></div>`;
+        ${lin('Vazão máxima', p.vazao ? p.vazao + ' m³/h' : '')}${lin('Corpo hídrico / aquífero', p.corpo)}${lin('Bacia', p.bacia)}${lin('Setor', p.setor)}</table>${window.blocoEmitir ? blocoEmitir({ nome: p.nome, c: p.c, num: p.num, xy: [ll.lng, ll.lat] }) : ''}</div>`;
     const pop = new mapboxgl.Popup({ maxWidth: '360px' }).setLngLat(ll).setHTML(h).addTo(map);
     if (CHAVE && p.c) {
         const lic = f.layer.id.startsWith('lic');
