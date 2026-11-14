@@ -505,7 +505,7 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
 
     // ---------------------------------------------------------------- Agenda de obrigações em vigência (derivada das licenças, outorgas e da tipologia)
     const DIA = 864e5, addDias = (d, n) => new Date(+d + n * DIA);
-    const OPERA = /^(R?LO|LOR|R?LAS|LAU|LAC|R?AA|AuA)\b/i, DISPENSA = /^D(LA|IS)/i;
+    const OPERA = /^(R?LO|LOR|R?LAS|LAU|LAC)\b/i, DISPENSA = /^D(LA|IS)/i, AUTORIZ = /^(AA|AuA)\b/i;
     function proxAniversario(d, hoje) { if (!d) return null; let x = new Date(d); while (x < hoje) x = new Date(x.getFullYear() + 1, x.getMonth(), x.getDate()); return x; }
     function proxData(mes, dia, hoje) { let x = new Date(hoje.getFullYear(), mes, dia); if (x < hoje) x = new Date(hoje.getFullYear() + 1, mes, dia); return x; }
     function proxTrimestre(hoje, diaMesSeguinte) { const t = Math.floor(hoje.getMonth() / 3); let x = new Date(hoje.getFullYear(), t * 3 + 3, diaMesSeguinte); if (x < hoje) x = new Date(hoje.getFullYear(), t * 3 + 6, diaMesSeguinte); return x; }
@@ -517,6 +517,7 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         vig.forEach(x => {
             const va = dataBR(x.va), em = dataBR(x.em), doc = `${x.s} nº ${x.d}`;
             if (DISPENSA.test(x.s)) { if (va) add('Licenciamento', 'Renovar a declaração de dispensa antes do vencimento', 'Declaração emitida (IAT/município)', `${doc} – ${x.a}`, va, `até ${x.va}`, st(va, 180)); return; }
+            if (AUTORIZ.test(x.s)) { if (va) add('Resíduos', 'Destinar os resíduos autorizados só dentro da validade da autorização, com MTR e certificado de destinação', 'Autorização Ambiental (IAT); Portaria MMA 280/2020', `${doc} – ${x.a}`, va, `até ${x.va}`, st(va, 120)); return; }
             if (va) add('Licenciamento', 'Protocolar a renovação da licença (120 dias antes do vencimento)', 'LC 140/2011, art. 14, §4º', `${doc} – válida até ${x.va}`, addDias(va, -120), `até ${br(addDias(va, -120))}`);
             add('Licenciamento', 'Cumprir e comprovar as condicionantes da licença', 'Licença emitida (IAT)', doc, null, 'conforme a licença', 'pd', 'Fase 2 – leitura da licença');
             if (OPERA.test(x.s)) add('Resíduos', 'Declarar o Inventário de Resíduos Sólidos (SGA-IR)', 'Decreto PR 6.674/2002, art. 17; Res. CEMA 70/2009', `${doc} – 12 meses a partir da emissão (${x.em || '–'})`, proxAniversario(em, hoje), null, null);
