@@ -143,6 +143,8 @@ if (MODO_EMP) {
     const q = new URLSearchParams({ emp: ref.nome, m: ref.cod || '' }); if (ref.xy) q.set('xy', ref.xy.map(v => v.toFixed(5)).join(','));
     op.link = `https://csambiental.github.io/licencas-outorgas-pr/?${q}`;
     op.imgs = await RaioX.embutirImagens(r);
+    // alternativa sem acesso ao Mapbox: --imagens <pasta> com mapa.jpg e capa.jpg já baixadas
+    if (args.imagens) for (const k of ['mapa', 'capa']) { const f = path.join(args.imagens, k + '.jpg'); if (!op.imgs[k] && fs.existsSync(f)) op.imgs[k] = 'data:image/jpeg;base64,' + fs.readFileSync(f).toString('base64'); }
     if (!op.imgs.mapa) console.error('Aviso: imagem de satélite indisponível (sem acesso ao Mapbox); o relatório usa o croqui.');
     fs.writeFileSync(path.join(pasta, 'relatorio.html'), RaioX.relatorioEmpreendimentoHTML(r, op));
     fs.writeFileSync(path.join(pasta, 'empreendimento.csv'), RaioX.csvEmpreendimento(r));

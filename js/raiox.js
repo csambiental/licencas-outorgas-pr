@@ -690,7 +690,7 @@ ${op.botaoImprimir === false ? '' : '<p class="noprint"><button onclick="window.
 ${sec('Síntese executiva', 'Onde está, como está e o que fazer agora', `
   ${e.finalidade === 'Prospecção' ? '<div class="interno">DOCUMENTO DE USO INTERNO – contém contatos</div>' : ''}
   <div class="id">${card('Titular', esc(nome), PF ? 'pessoa física' : e.cnpj ? `CNPJ <span class="mono">${esc(e.cnpj)}</span>` : 'CNPJ não identificado na base pública')}
-   ${card('Atividade', esc((e.ct && e.ct.cnae) || (u1 && u1.ativ[0]) || '–'), e.ct && e.ct.porte ? esc(e.ct.porte) : '')}
+   ${card('Atividade', esc((e.ct && e.ct.cnae) || (u1 && (u1.ativ[0] || ((e.lic.find(x => x._u === u1.id) || {}).a))) || '–'), e.ct && e.ct.porte ? esc(e.ct.porte) : '')}
    ${card('Ponto declarado', u1 ? `<span class="mono">${u1.decl.xy[1].toFixed(5)}, ${u1.decl.xy[0].toFixed(5)}</span>` : '–', u1 ? `${esc(u1.mun)} · <a href="https://www.google.com/maps/@${u1.decl.xy[1].toFixed(6)},${u1.decl.xy[0].toFixed(6)},400m/data=!3m1!1e3" target="_blank" rel="noopener">satélite ↗</a>` : '')}
    ${contato ? card('Contato (uso interno)', esc(contato), '', 'l3') : ''}</div>
   <div class="sint"><div>${u1 ? `<img class="mapa" src="${esc((op.imgs && op.imgs.mapa) || mapaPts.url)}" alt="Imagem de satélite do entorno de ${RAIO_EMP} m" onerror="this.style.display='none';this.nextElementSibling.style.display='block'"><div style="display:none">${R.croquiSVG(vista, 760, 600)}</div>${legenda}` : '<p class="hint">Sem registro do titular com coordenada – localização a confirmar.</p>'}</div>
