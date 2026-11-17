@@ -132,14 +132,14 @@ async function buscar(q) {
     for (const [c, t, i] of lista) {
         if (!cacheMun[c]) continue; const d = await cacheMun[c], x = (t === 'l' ? d.lic : d.out)[+i]; if (!x) continue;
         itens.push(t === 'l'
-            ? { c, t, i, nome: x.n, sit: x.si, cor: COR_LIC[x.g] || '#78909c', rot: 'Licença', l1: `${x.s} nº ${x.d} · protocolo ${x.p}`, l2: `${x.a}${x.e && x.e !== x.a ? ' – ' + x.e : ''} · validade ${x.va || '–'}`, busca: x.d }
-            : { c, t, i, nome: x.nome, sit: x.situ, cor: COR_OUT[x.tipo] || '#90a4ae', rot: 'Outorga', l1: `${x.doc} nº ${x.num || '–'}`, l2: `${x.interf || x.tipo} · vencimento ${x.venc || '–'}`, busca: x.num || x.nome });
+            ? { c, t, i, semxy: !x.xy, nome: x.n, sit: x.si, cor: COR_LIC[x.g] || '#78909c', rot: 'Licença', l1: `${x.s} nº ${x.d} · protocolo ${x.p}`, l2: `${x.a}${x.e && x.e !== x.a ? ' – ' + x.e : ''} · validade ${x.va || '–'}`, busca: x.d }
+            : { c, t, i, semxy: !x.xy, nome: x.nome, sit: x.situ, cor: COR_OUT[x.tipo] || '#90a4ae', rot: 'Outorga', l1: `${x.doc} nº ${x.num || '–'}`, l2: `${x.interf || x.tipo} · vencimento ${x.venc || '–'}`, busca: x.num || x.nome });
     }
     box.innerHTML = `<button class="voltar" id="fecharBusca">← voltar</button><h2>Resultado para “${esc(q)}”</h2>
         ${muns.length ? `<h3>Municípios</h3>${muns.map(f => `<div class="item res" data-m="${f.properties.cod}"><div class="n">📍 ${esc(f.properties.nome)}</div><div class="m">${fmt(f.properties.lic_vig)} licenças vigentes · ${fmt(f.properties.out_val)} outorgas válidas</div></div>`).join('')}` : ''}
         <h3>Licenças e outorgas (${fmt(chaves.size)}${chaves.size > itens.length ? `, mostrando ${itens.length}` : ''})</h3>
         ${itens.length ? itens.map((x, k) => `<div class="item res" data-k="${k}" style="border-left-color:${x.cor}"><div class="n"><span class="tipo" style="background:${x.t === 'l' ? '#2e7d32' : '#0277bd'}">${x.rot}</span>${esc(x.nome)} ${tagSit(x.sit)}</div>
-            <div class="m">${esc(x.l1)}</div><div class="m">${esc(x.l2)}</div><div class="m">📍 ${esc(nomeMun(x.c))}</div></div>`).join('')
+            <div class="m">${esc(x.l1)}</div><div class="m">${esc(x.l2)}</div><div class="m">📍 ${esc(nomeMun(x.c))}${x.semxy ? ' · <span class="semxy">sem coordenada no órgão</span>' : ''}</div></div>`).join('')
             : `<p class="dica">Nada encontrado. Dicas: para números, digite só o número da licença (ex.: 265644), o protocolo (ex.: 18.525.996-0) ou o nº da outorga (ex.: 10846/2026); para titulares, digite parte do nome.</p>`}`;
     document.getElementById('fecharBusca').onclick = fecharBusca;
     box.querySelectorAll('[data-m]').forEach(el => el.onclick = () => { fecharBusca(); abrirMunicipio(el.dataset.m); });
@@ -149,7 +149,14 @@ async function buscar(q) {
         const ft = document.getElementById('fTexto'); if (ft) { ft.value = x.busca; ft.dispatchEvent(new Event('input')); }
         const d = await cacheMun[x.c], r = (x.t === 'l' ? d.lic : d.out)[+x.i];
         if (r && r.xy) destacar(r.xy, { nome: x.nome, tipo: x.t, chave: x.t === 'l' ? r.p : r.num });
-        else abrirMunicipio(x.c);
+        else {
+            // registro sem coordenada no órgão: usa outro ponto do mesmo titular no município (licença ou outorga), avisando que é aproximado
+            const raiz = semAcento(x.nome).replace(/\b(LTDA|ME|EPP|EIRELI|S\/?A|-)\b/g, ' ').split(/\s+/).filter(w => w.length >= 3).slice(0, 2).join(' ');
+            const mesmo = n => raiz && semAcento(n || '').replace(/\s+-\s+/g, ' ').includes(raiz);
+            const alt = d.lic.find(l => l.xy && mesmo(l.n)) || d.out.find(o => o.xy && mesmo(o.nome));
+            if (alt) destacar(alt.xy, { nome: x.nome + ' (local aproximado)', tipo: alt.n ? 'l' : 'o', chave: alt.p || alt.num });
+            avisoSemCoord(alt);
+        }
     });
 }
 function fecharBusca() { document.getElementById('resultados').hidden = true; if (munSel) document.getElementById('municipio').hidden = false; else document.getElementById('estado').hidden = false; }
@@ -305,6 +312,10 @@ function destacar(xy, o = {}) {
     map.flyTo({ center: xy, zoom: Math.max(map.getZoom(), 15.5), duration: 1800 });
     // abre a ficha quando o voo terminar e os pontos daquela área estiverem carregados
     map.once('idle', () => setTimeout(abrirFicha, 150));
+}
+function avisoSemCoord(alt) {
+    const el = document.getElementById('municipio'); if (!el) return;
+    el.insertAdjacentHTML('afterbegin', `<p class="aviso-coord">⚠️ Este registro não tem coordenada no cadastro do órgão. ${alt ? 'O alvo no mapa mostra outro registro do mesmo titular no município (local aproximado).' : 'Não há outro ponto do mesmo titular no município para servir de referência.'}</p>`);
 }
 function limparDestaque() { if (marcaDestaque) { marcaDestaque.remove(); marcaDestaque = null; } }
 
