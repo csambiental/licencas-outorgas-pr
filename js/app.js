@@ -145,10 +145,11 @@ async function buscar(q) {
     box.querySelectorAll('[data-m]').forEach(el => el.onclick = () => { fecharBusca(); abrirMunicipio(el.dataset.m); });
     box.querySelectorAll('[data-k]').forEach(el => el.onclick = async () => {
         const x = itens[+el.dataset.k]; fecharBusca(); aba = x.t === 'l' ? 'lic' : 'out';
-        await abrirMunicipio(x.c);
+        await abrirMunicipio(x.c, false);  // sem enquadrar o município: o mapa vai direto ao ponto
         const ft = document.getElementById('fTexto'); if (ft) { ft.value = x.busca; ft.dispatchEvent(new Event('input')); }
         const d = await cacheMun[x.c], r = (x.t === 'l' ? d.lic : d.out)[+x.i];
-        if (r && r.xy) setTimeout(() => destacar(r.xy, { nome: x.nome, tipo: x.t, chave: x.t === 'l' ? r.p : r.num }), 400);
+        if (r && r.xy) destacar(r.xy, { nome: x.nome, tipo: x.t, chave: x.t === 'l' ? r.p : r.num });
+        else abrirMunicipio(x.c);
     });
 }
 function fecharBusca() { document.getElementById('resultados').hidden = true; if (munSel) document.getElementById('municipio').hidden = false; else document.getElementById('estado').hidden = false; }
@@ -300,8 +301,10 @@ function destacar(xy, o = {}) {
         if (f) popup(f, { lng: xy[0], lat: xy[1] });
     };
     el.addEventListener('click', e => { e.stopPropagation(); abrirFicha(); });
-    map.once('moveend', () => setTimeout(abrirFicha, 350));
-    map.flyTo({ center: xy, zoom: Math.max(map.getZoom(), 15.5) });
+    map.stop();
+    map.flyTo({ center: xy, zoom: Math.max(map.getZoom(), 15.5), duration: 1800 });
+    // abre a ficha quando o voo terminar e os pontos daquela área estiverem carregados
+    map.once('idle', () => setTimeout(abrirFicha, 150));
 }
 function limparDestaque() { if (marcaDestaque) { marcaDestaque.remove(); marcaDestaque = null; } }
 
