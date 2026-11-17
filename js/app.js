@@ -148,7 +148,7 @@ async function buscar(q) {
         await abrirMunicipio(x.c);
         const ft = document.getElementById('fTexto'); if (ft) { ft.value = x.busca; ft.dispatchEvent(new Event('input')); }
         const d = await cacheMun[x.c], r = (x.t === 'l' ? d.lic : d.out)[+x.i];
-        if (r && r.xy) setTimeout(() => map.flyTo({ center: r.xy, zoom: 15 }), 400);
+        if (r && r.xy) setTimeout(() => destacar(r.xy, { nome: x.nome, tipo: x.t, chave: x.t === 'l' ? r.p : r.num }), 400);
     });
 }
 function fecharBusca() { document.getElementById('resultados').hidden = true; if (munSel) document.getElementById('municipio').hidden = false; else document.getElementById('estado').hidden = false; }
@@ -165,6 +165,7 @@ async function abrirMunicipio(cod, zoom = true) {
     mostrar = 150; renderMunicipio();
 }
 function fecharMunicipio() {
+    limparDestaque();
     munSel = dadosMun = null; map.setFilter('mun-sel', ['==', ['get', 'cod'], '']);
     document.getElementById('municipio').hidden = true; document.getElementById('estado').hidden = false;
     history.replaceState(null, '', location.pathname); map.flyTo({ center: [-51.6, -24.6], zoom: 6.2 });
@@ -205,7 +206,7 @@ function renderMunicipio() {
             (!t || JSON.stringify(x).toLowerCase().includes(t)));
         document.getElementById('lista').innerHTML = `<p class="rot">${fmt(F.length)} registro(s)</p>` + F.slice(0, mostrar).map((x, i) => aba === 'lic' ? itemLic(x, i) : itemOut(x, i)).join('') +
             (F.length > mostrar ? `<button class="mais" id="mais">Mostrar mais (${fmt(F.length - mostrar)} restantes)</button>` : '');
-        document.querySelectorAll('#lista [data-xy]').forEach(b => b.onclick = () => { const xy = JSON.parse(b.dataset.xy); map.flyTo({ center: xy, zoom: 15 }); });
+        document.querySelectorAll('#lista [data-xy]').forEach(b => b.onclick = () => { const xy = JSON.parse(b.dataset.xy); destacar(xy, { nome: b.dataset.nome || b.closest('.item')?.querySelector('.n')?.childNodes[0]?.textContent?.trim(), tipo: aba === 'lic' ? 'l' : 'o', chave: b.dataset.p || b.dataset.num }); });
         const m = document.getElementById('mais'); if (m) m.onclick = () => { mostrar += 300; desenhar(); };
     };
     fTexto.oninput = desenhar; fSit.onchange = desenhar; fTipo.onchange = desenhar; desenhar();
@@ -282,6 +283,27 @@ async function htmlContato(cod, tipo, chave) {
             ${lin('Oportunidades', c.oport)}</table></div>`;
     }).join('');
 }
+
+// ---------------- destaque do ponto escolhido (busca ou lista): alvo pulsante + nome, e abre a ficha do ponto
+let marcaDestaque = null;
+function destacar(xy, o = {}) {
+    if (marcaDestaque) marcaDestaque.remove();
+    const el = document.createElement('div'); el.className = 'alvo';
+    el.innerHTML = `<span class="onda"></span><span class="onda o2"></span><span class="miolo"></span>${o.nome ? `<span class="alvo-nome">${esc(o.nome)}</span>` : ''}`;
+    el.title = 'Ponto escolhido – clique para ver a ficha';
+    marcaDestaque = new mapboxgl.Marker({ element: el, anchor: 'center' }).setLngLat(xy).addTo(map);
+    const abrirFicha = () => {
+        const pt = map.project(xy), camadas = o.tipo === 'o' ? ['out-val', 'out-prob', 'lic-vig', 'lic-venc'] : ['lic-vig', 'lic-venc', 'out-val', 'out-prob'];
+        const fs = map.queryRenderedFeatures([[pt.x - 8, pt.y - 8], [pt.x + 8, pt.y + 8]], { layers: camadas.filter(l => map.getLayer(l)) });
+        const ch = String(o.chave || '');
+        const f = fs.find(f => ch && (String(f.properties.p) === ch || String(f.properties.num) === ch)) || fs.find(f => o.nome && (f.properties.n || f.properties.nome) === o.nome) || fs[0];
+        if (f) popup(f, { lng: xy[0], lat: xy[1] });
+    };
+    el.addEventListener('click', e => { e.stopPropagation(); abrirFicha(); });
+    map.once('moveend', () => setTimeout(abrirFicha, 350));
+    map.flyTo({ center: xy, zoom: Math.max(map.getZoom(), 15.5) });
+}
+function limparDestaque() { if (marcaDestaque) { marcaDestaque.remove(); marcaDestaque = null; } }
 
 function popup(f, ll) {
     const p = f.properties, lin = (k, v) => v ? `<tr><td>${k}</td><td>${esc(v)}</td></tr>` : '';

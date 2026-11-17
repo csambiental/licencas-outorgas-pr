@@ -103,3 +103,13 @@ ul.rxach b { font-size: .7rem; text-transform: uppercase; color: var(--suave); m
 .emitir .emB { display: flex; gap: 6px; margin-top: 4px; }
 .emitir .emGo { flex: 1; padding: 6px; border: 0; background: var(--verde2); color: #fff; border-radius: 6px; cursor: pointer; font-weight: 600; }
 .emitir .emPainel { padding: 6px 8px; border: 1px solid var(--verde2); background: #fff; color: var(--verde2); border-radius: 6px; cursor: pointer; font-size: .78rem; }
+
+/* ponto escolhido na busca ou na lista */
+.alvo { position: relative; width: 22px; height: 22px; cursor: pointer; }
+.alvo .miolo { position: absolute; inset: 4px; border-radius: 50%; background: #ffeb3b; border: 3px solid #d50000; box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(0,0,0,.5); }
+.alvo .onda { position: absolute; inset: -4px; border-radius: 50%; border: 3px solid #d50000; animation: onda 1.8s ease-out infinite; }
+.alvo .onda.o2 { animation-delay: .9s; }
+.alvo-nome { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; background: #d50000; color: #fff; font: 600 12px/1.2 system-ui, sans-serif; padding: 4px 8px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+.alvo-nome::after { content: ""; position: absolute; left: 50%; top: 100%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #d50000; }
+@keyframes onda { from { transform: scale(.6); opacity: 1; } to { transform: scale(2.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .alvo .onda { animation: none; transform: scale(1.6); opacity: .6; } }
