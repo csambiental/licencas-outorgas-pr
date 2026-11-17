@@ -1,0 +1,28 @@
+name: sondar sga
+on: workflow_dispatch
+permissions: { contents: write }
+jobs:
+  s:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          cd tools && python3 - <<'PY' > /tmp/sga.txt 2>&1
+          import re, json, collections
+          from processar import http, SGA, _js_para_json
+          txt = http(f'{SGA}?action=listaMunicipioPorUFAjax&estadoMunicipioCombo=PR&page=1&start=0&limit=1000', txt=True)
+          ids = {b: int(a) for a, b in re.findall(r'"?idMunicipioCorreios"?\s*:\s*(\d+)\s*,\s*"?nomeMunicipio"?\s*:\s*"([^"]+)"', txt)}
+          for nome in ['Londrina', 'Maringá', 'Curitiba', 'Cambé']:
+              idc = ids.get(nome) or ids.get(nome.upper())
+              t = http(f'{SGA}?action=consultarProcessoLicenciamento&estadoMunicipioCombo=PR&municipioCombo={idc}&page=1&start=0&limit=1000', txt=True)
+              regs = _js_para_json(t)
+              for r in regs: r.pop('cpfCnpj', None)
+              print('==', nome, idc, len(regs))
+              if regs: print(sorted(regs[0].keys()))
+              for k in sorted(regs[0].keys()) if regs else []:
+                  c = collections.Counter(str(r.get(k))[:60] for r in regs)
+                  if len(c) <= 25: print('  ', k, dict(c.most_common(12)))
+          PY
+          cat /tmp/sga.txt | head -200
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan sondagem && git rm -rfq . && cp /tmp/sga.txt sga.txt && git add sga.txt && git commit -qm sondagem && git push -f origin sondagem
