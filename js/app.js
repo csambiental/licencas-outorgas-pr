@@ -1,6 +1,24 @@
 // Licenças e Outorgas do Paraná – CS Consultoria Ambiental
 mapboxgl.accessToken = 'pk.eyJ1IjoiY3NhbWJpZW50YWwiLCJhIjoiY205MWk4eHU4MDE3czJxcHNqamR4emd5aiJ9.e8K-ENRHJwXTz_FGGwYExg';
 const SGA = 'https://www.sga.pr.gov.br/sga-iap/consultarProcessoLicenciamento.do?action=exibirDadosPublicoLicenca&ucsChamador=carregarInterfaceInicial';
+// Municípios com licenciamento ambiental próprio (certificados pelo IAT – Res. CEMA 110/2021). Fonte: AEN/IAT, 13/05/2026; datas dos convênios/notícias do IAT.
+const DELEG = {
+    '4106902': { tipo: 'plena', desde: '2022-12-31', rot: '2022 (convênio IAT nº 820/2022)' },
+    '4115200': { tipo: 'plena', desde: '2023-06-06', rot: '06/06/2023' },
+    '4113700': { tipo: 'plena', desde: '2023-11-28', rot: '28/11/2023' },
+    '4101804': { tipo: 'plena', desde: '2023-12-31', rot: '2023 (convênio IAT nº 67/2023)' },
+    '4125506': { tipo: 'plena', desde: '2024-12-31', rot: '2024 (convênio IAT nº 182/2024)' },
+    '4109401': { tipo: 'plena' },
+    '4104808': { tipo: 'parcial' }, '4108304': { tipo: 'parcial' }, '4105805': { tipo: 'parcial' }, '4107652': { tipo: 'parcial' },
+    '4119152': { tipo: 'parcial' }, '4119509': { tipo: 'parcial' }, '4119905': { tipo: 'parcial' }, '4105904': { tipo: 'parcial' }
+};
+const isoBR = d => (d || '').split('/').reverse().join('-');
+const posDeleg = (cod, em) => { const g = DELEG[cod]; return !!(g && g.desde && em && isoBR(em) > g.desde); };
+function blocoDeleg(cod) {
+    const g = DELEG[cod]; if (!g) return '';
+    return `<div class="deleg ${g.tipo}"><b>🏛️ Município com licenciamento ambiental próprio – delegação ${g.tipo}</b>
+        <span>${g.tipo === 'plena' ? 'A prefeitura licencia as atividades de impacto local' : 'A prefeitura licencia parte das atividades de impacto local'}${g.rot ? `, desde ${g.rot}` : ''}. As licenças municipais são emitidas no mesmo sistema do Estado (SGA) e já aparecem neste mapa; o SGA não informa qual órgão emitiu cada uma.${g.desde ? ' As licenças emitidas depois da delegação estão marcadas na lista.' : ''}</span></div>`;
+}
 const COR_LIC = { 'Licença de Operação': '#2e7d32', 'Licença Simplificada': '#66bb6a', 'Licença por Adesão e Compromisso': '#26a69a', 'Licença Prévia / de Instalação': '#ffa000',
     'Dispensa / inexigibilidade': '#ab47bc', 'Autorização Ambiental': '#1e88e5', 'Autorização Florestal': '#6d4c41', 'Outras': '#78909c' };
 const COR_OUT = { 'Captação superficial': '#0288d1', 'Poço (água subterrânea)': '#5e35b1', 'Lançamento de efluentes': '#8d6e63', 'Barragem / soleira': '#00897b', 'Obras e intervenções em rios': '#90a4ae' };
@@ -34,6 +52,8 @@ function adicionarCamadas() {
     map.addSource('mun', { type: 'geojson', data: MUNS, promoteId: 'cod' });
     map.addLayer({ id: 'mun-fill', type: 'fill', source: 'mun', paint: { 'fill-color': '#ccc', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 7.5, 0.75, 9.5, 0.12] } });
     map.addLayer({ id: 'mun-linha', type: 'line', source: 'mun', paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.5, 10, 1.5] } });
+    map.addLayer({ id: 'mun-deleg', type: 'line', source: 'mun', filter: ['in', ['get', 'cod'], ['literal', Object.keys(DELEG)]],
+        paint: { 'line-color': ['case', ['in', ['get', 'cod'], ['literal', Object.keys(DELEG).filter(c => DELEG[c].tipo === 'plena')]], '#1b5e20', '#7cb342'], 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.5, 10, 3], 'line-dasharray': [2, 1.5] } });
     map.addLayer({ id: 'mun-sel', type: 'line', source: 'mun', paint: { 'line-color': '#c62828', 'line-width': 2.5 }, filter: ['==', ['get', 'cod'], ''] });
     map.addLayer({ id: 'mun-rot', type: 'symbol', source: 'mun', minzoom: 7.3,
         layout: { 'text-field': ['get', 'nome'], 'text-size': 11, 'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'] },
@@ -183,7 +203,7 @@ const tagSit = s => `<span class="tag ${/Vencida|Irregular/.test(s) ? 'vencida' 
 function renderMunicipio() {
     const d = dadosMun, e = d.est;
     const el = document.getElementById('municipio');
-    el.innerHTML = `<button class="voltar" id="voltar">← Paraná</button><h2>${esc(d.nome)}</h2>
+    el.innerHTML = `<button class="voltar" id="voltar">← Paraná</button><h2>${esc(d.nome)}</h2>${blocoDeleg(d.cod || munSel.cod)}
         <div class="kpis">
           <div class="kpi"><b>${fmt(e.lic_vig)}</b><span>licenças vigentes</span></div>
           <div class="kpi atencao"><b>${fmt(e.lic_venc6)}</b><span>licenças vencem em até 6 meses</span></div>
@@ -224,7 +244,7 @@ function itemLic(x) {
     return `<div class="item" style="border-left-color:${x.si === 'Vencida' ? '#9e9e9e' : COR_LIC[x.g] || '#78909c'}">
         <div class="n">${esc(x.n)} ${tagSit(x.si)}</div>
         <div class="m">${esc(x.a)}${x.e && x.e !== x.a ? ' – ' + esc(x.e) : ''}</div>
-        <div class="m">${esc(x.s)} nº ${esc(x.d)} · emissão ${esc(x.em) || '–'} · validade ${esc(x.va) || '–'}</div>
+        <div class="m">${esc(x.s)} nº ${esc(x.d)} · emissão ${esc(x.em) || '–'} · validade ${esc(x.va) || '–'}</div>${posDeleg(dadosMun.cod || munSel.cod, x.em) ? '<div class="m"><span class="tag-mun">emitida após a delegação ao município – pode ser licença municipal</span></div>' : ''}
         ${x.oc ? `<div class="m">💧 Outorga de captação: ${esc(x.oc)}</div>` : ''}
         <div class="acoes">${x.xy ? `<button data-xy="${esc(JSON.stringify(x.xy))}">📍 ver no mapa${x.lo ? ' (aprox.)' : ''}</button>` : '<span class="m">sem coordenada</span>'}<a href="${linkSGA(x)}" target="_blank" rel="noopener">📄 licença no SGA (PDF)</a><button class="btnEmp" data-nome="${esc(x.n)}" data-c="${dadosMun.cod}" data-p="${esc(x.p)}" ${x.xy ? `data-xy="${esc(JSON.stringify(x.xy))}"` : ''}>🔎 Raio X do empreendimento</button></div></div>`;
 }
