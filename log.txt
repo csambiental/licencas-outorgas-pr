@@ -1,0 +1,10 @@
+22.533.805-1 text/html;charset=UTF-8 83 html
+{success: false,mensagem: 'NÃ£o foi possÃ­vel validar nenhum CAPTCHA no servidor.'}
+19.919.634-0 text/html;charset=UTF-8 83 html
+{success: false,mensagem: 'NÃ£o foi possÃ­vel validar nenhum CAPTCHA no servidor.'}
+26.097.085-2 text/html;charset=UTF-8 83 html
+{success: false,mensagem: 'NÃ£o foi possÃ­vel validar nenhum CAPTCHA no servidor.'}
+21.380.694-7 text/html;charset=UTF-8 83 html
+{success: false,mensagem: 'NÃ£o foi possÃ­vel validar nenhum CAPTCHA no servidor.'}
+24.988.581-9 text/html;charset=UTF-8 83 html
+{success: false,mensagem: 'NÃ£o foi possÃ­vel validar nenhum CAPTCHA no servidor.'}
