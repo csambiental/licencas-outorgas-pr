@@ -89,7 +89,7 @@
             titulo: 'Raio X Ambiental da Área', logo: new URL('logo.png', location.href).href, botaoImprimir: true };
         const cods = RaioX.municipiosDaArea(area, MUNS);
         if (!cods.length) { box.innerHTML = '<p class="dica">A área está fora do Paraná.</p>'; return; }
-        const dados = await Promise.all(cods.map(c => carregarMun(c)));
+        const dados = await Promise.all(cods.map(async c => { const d = await carregarMun(c); if (!d.mr) d.mr = await fetch(`data/mr/${c}.json`).then(r => r.ok ? r.json() : null).catch(() => null) || {}; return d; }));
         resultado = RaioX.calcular(area, dados, MUNS, op);
         if (op.contatos) {
             const C = {}; await Promise.all(cods.map(async c => C[c] = await contatosMun(c)));
@@ -103,7 +103,8 @@
         box.innerHTML = `<h3>${resultado.area.tipo === 'circulo' ? `Raio de ${fmt(resultado.area.raio)} m` : `Polígono ${esc(resultado.area.nome || '')}`} · ${fmt(resultado.area.ha)} ha</h3>
             <p class="rot">${esc(resultado.municipios.join(', ') || 'sem registros')} · base de ${esc(resultado.base)}</p>
             <div class="kpis">${kp(k.lic_vig, 'licenças vigentes')}${kp(k.lic_venc6, 'licenças vencem em até 6 meses', 'atencao')}${kp(k.lic_vencidas, 'licenças vencidas sem renovação', 'alerta')}${kp(k.lic_agua_sem, 'uso de água sem outorga próxima', 'atencao')}
-            ${kp(k.out_val, 'outorgas válidas')}${kp(k.out_venc6, 'outorgas vencem em até 6 meses', 'atencao')}${kp(k.out_vencidas + k.out_irreg, 'outorgas vencidas ou irregulares', 'alerta')}${kp(k.vazao_capt_m3h, 'm³/h de captação outorgada')}</div>
+            ${kp(k.out_val, 'outorgas válidas')}${kp(k.out_venc6, 'outorgas vencem em até 6 meses', 'atencao')}${kp(k.out_vencidas + k.out_irreg, 'outorgas vencidas ou irregulares', 'alerta')}${kp(k.vazao_capt_m3h, 'm³/h de captação outorgada')}
+            ${kp(k.min_total || 0, 'processos minerários (ANM)', k.min_lavra ? 'atencao' : '')}${kp(k.rsk || 0, 'setores de risco (SGB)', k.rsk ? 'alerta' : '')}${kp(k.sit || 0, 'sítios arqueológicos até 1 km', k.sit ? 'atencao' : '')}${kp(k.com || 0, 'terras indígenas/quilombolas até 10 km', k.com ? 'atencao' : '')}</div>
             <div class="baixar"><button id="rxRel">📄 Relatório (imprimir/PDF)</button></div>
             <div class="baixar"><button id="rxCsvL">⬇ Licenças da área</button><button id="rxCsvO">⬇ Outorgas da área</button></div>
             <h3>Achados</h3><ul class="rxach">${resultado.achados.map(a => `<li class="${a.risco === 'Alto' ? 'alerta' : a.risco === 'Médio' ? 'atencao' : ''}"><b>${esc(a.n)}</b> ${esc(a.t)}</li>`).join('')}</ul>

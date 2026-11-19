@@ -64,8 +64,8 @@ function adicionarCamadas() {
     const raio = ['interpolate', ['linear'], ['zoom'], 8, 2, 12, 4.5, 16, 7];
     map.addSource('mr', { type: 'vector', tiles: [new URL('data/tiles_mr/{z}/{x}/{y}.pbf', location.href).href.replace(/%7B/g, '{').replace(/%7D/g, '}')], minzoom: 6, maxzoom: 13 });
     // mineração (ANM) e setores de risco (SGB), por baixo dos pontos
-    map.addLayer({ id: 'min-fill', type: 'fill', source: 'mr', 'source-layer': 'min', minzoom: 7, paint: { 'fill-color': ['match', ['get', 'g'], ...Object.entries(COR_MIN).flat(), '#8d6e63'], 'fill-opacity': 0.22 } });
-    map.addLayer({ id: 'min-linha', type: 'line', source: 'mr', 'source-layer': 'min', minzoom: 7, paint: { 'line-color': ['match', ['get', 'g'], ...Object.entries(COR_MIN).flat(), '#8d6e63'], 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.4, 13, 1.6] } });
+    map.addLayer({ id: 'min-fill', type: 'fill', source: 'mr', 'source-layer': 'min', minzoom: 7, layout: { visibility: 'none' }, paint: { 'fill-color': ['match', ['get', 'g'], ...Object.entries(COR_MIN).flat(), '#8d6e63'], 'fill-opacity': 0.22 } });
+    map.addLayer({ id: 'min-linha', type: 'line', source: 'mr', 'source-layer': 'min', minzoom: 7, layout: { visibility: 'none' }, paint: { 'line-color': ['match', ['get', 'g'], ...Object.entries(COR_MIN).flat(), '#8d6e63'], 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.4, 13, 1.6] } });
     map.addLayer({ id: 'com-fill', type: 'fill', source: 'mr', 'source-layer': 'com', paint: { 'fill-color': ['match', ['get', 'g'], 'Terra indígena', '#e65100', '#00897b'], 'fill-opacity': 0.18 } });
     map.addLayer({ id: 'com-linha', type: 'line', source: 'mr', 'source-layer': 'com', paint: { 'line-color': ['match', ['get', 'g'], 'Terra indígena', '#e65100', '#00897b'], 'line-width': 1.8, 'line-dasharray': [2, 1] } });
     map.addLayer({ id: 'rsk-fill', type: 'fill', source: 'mr', 'source-layer': 'rsk', paint: { 'fill-color': ['match', ['get', 'gr'], ...Object.entries(COR_RSK).flat(), '#ef6c00'], 'fill-opacity': 0.45 } });

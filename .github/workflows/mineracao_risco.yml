@@ -14,7 +14,7 @@ jobs:
           sudo apt-get -qq update && sudo apt-get -qq install -y build-essential libsqlite3-dev zlib1g-dev
           git clone -q --depth 1 https://github.com/felt/tippecanoe.git /tmp/tippecanoe && make -s -C /tmp/tippecanoe -j4 && sudo make -s -C /tmp/tippecanoe install
       - run: |
-          pip install -q cryptography
+          pip install -q cryptography shapely
           python3 tools/mineracao_risco.py saida
           rm -rf saida/tiles_mr
           tippecanoe -e saida/tiles_mr --no-tile-compression --force -Z6 -z13 --drop-densest-as-needed --coalesce-densest-as-needed -L min:saida/min.geojson -L rsk:saida/rsk.geojson -L sit:saida/sit.geojson -L com:saida/com.geojson

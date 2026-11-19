@@ -71,6 +71,31 @@ json.dump({'type': 'FeatureCollection', 'features': coms}, open(f'{SAIDA}/com.ge
 
 json.dump({'type': 'FeatureCollection', 'features': mins}, open(f'{SAIDA}/min.geojson', 'w'), ensure_ascii=False, separators=(',', ':'))
 json.dump({'type': 'FeatureCollection', 'features': rsks}, open(f'{SAIDA}/rsk.geojson', 'w'), ensure_ascii=False, separators=(',', ':'))
+# arquivo por município para o Raio X da área (geometria simplificada)
+try:
+    from shapely.geometry import shape, mapping
+    from shapely.strtree import STRtree
+    mg = json.load(open(f'{SAIDA}/municipios.geojson'))['features']
+    mgeo = [shape(f['geometry']).buffer(0) for f in mg]; marv = STRtree(mgeo)
+    def aneis(g):
+        g = g.simplify(0.0003, preserve_topology=True)
+        polys = [g] if g.geom_type == 'Polygon' else list(getattr(g, 'geoms', []))
+        return [[[round(x, 5), round(y, 5)] for x, y in p.exterior.coords] for p in polys if p.geom_type == 'Polygon'][:20]
+    por = {}
+    for chave, L in (('min', mins), ('rsk', rsks), ('sit', sits), ('com', coms)):
+        for f in L:
+            g = shape(f['geometry']); g = g if g.geom_type in ('Point', 'MultiPoint') else g.buffer(0)
+            item = dict(f['properties'])
+            if g.geom_type == 'Point': item['xy'] = [round(g.x, 5), round(g.y, 5)]
+            else: item['an'] = aneis(g); c = g.representative_point(); item['xy'] = [round(c.x, 5), round(c.y, 5)]
+            for i in marv.query(g):
+                if mgeo[i].intersects(g): por.setdefault(mg[i]['properties']['cod'], {}).setdefault(chave, []).append(item)
+    os.makedirs(f'{SAIDA}/mr', exist_ok=True)
+    for cod, d in por.items(): json.dump(d, open(f'{SAIDA}/mr/{cod}.json', 'w'), ensure_ascii=False, separators=(',', ':'))
+    print('arquivos por município', len(por))
+except Exception as e:
+    print('arquivo por município falhou', e)
+
 from collections import Counter
 res = {'processos_minerarios': len(mins), 'por_fase': Counter(f['properties']['g'] for f in mins),
        'setores_risco': len(rsks), 'municipios_com_setorizacao': len({f['properties'].get('mu') for f in rsks}), 'sitios_arqueologicos': len(sits), 'terras_indigenas_quilombolas': len(coms), 'atualizado': time.strftime('%d/%m/%Y')}

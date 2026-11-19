@@ -122,6 +122,16 @@
             }
         }
         lic.sort((a, b) => a.dm - b.dm); out.sort((a, b) => a.dm - b.dm);
+        // mineração (ANM), risco geológico (SGB), sítios arqueológicos (IPHAN), terras indígenas e quilombolas – arquivo mr/<cod>.json
+        const lim = area.tipo === 'circulo' ? area.raio : area.entorno, vistos = new Set(), MR = { min: [], rsk: [], sit: [], com: [] };
+        const distItem = x => { if (!x.an) return area.dist(x.xy); if (x.an.some(an => dentro(area.centro, an))) return 0;
+            let d = area.dist(x.xy); for (const an of x.an) for (let i = 0; i < an.length; i += Math.max(1, Math.floor(an.length / 60))) d = Math.min(d, area.dist(an[i])); return d; };
+        for (const d of dados) for (const ch of ['min', 'rsk', 'sit', 'com']) for (const x of ((d.mr || {})[ch] || [])) {
+            const id = ch + (x.pr || x.n || x.c) + x.xy; if (vistos.has(id)) continue;
+            const dm = distItem(x), raioCh = ch === 'com' ? Math.max(lim, 10000) : ch === 'sit' ? Math.max(lim, 1000) : lim;
+            if (dm <= raioCh) { vistos.add(id); MR[ch].push(Object.assign({}, x, { dm: Math.round(dm), mun: d.nome })); }
+        }
+        Object.values(MR).forEach(L => L.sort((a, b) => a.dm - b.dm));
         const km2 = area.m2 / 1e6;
         const vig = lic.filter(x => x.si !== 'Vencida'), outVal = out.filter(x => x.situ === 'Válida' || x.situ === 'Vence em até 6 meses');
         const capt = outVal.filter(x => /Capta|Poço/.test(x.tipo));
@@ -134,7 +144,9 @@
             out_vencidas: out.filter(x => x.situ === 'Vencida').length, out_irreg: out.filter(x => x.situ === 'Irregular').length,
             out_poco: capt.filter(x => x.tipo.startsWith('Poço')).length, out_sup: capt.filter(x => x.tipo === 'Captação superficial').length,
             out_lanc: lanc.length, vazao_capt_m3h: Math.round(vazCapt * 10) / 10,
-            titulares: new Set(lic.concat(out).map(x => (x.n || x.nome || '').toUpperCase())).size
+            titulares: new Set(lic.concat(out).map(x => (x.n || x.nome || '').toUpperCase())).size,
+            min_total: MR.min.length, min_lavra: MR.min.filter(x => x.g === 'Lavra / extração').length, rsk: MR.rsk.length, sit: MR.sit.length, com: MR.com.length,
+            mr_base: dados.some(d => d.mr)
         };
         // comparação com a média dos municípios da área (só registros com coordenada)
         const mm = Object.values(munInfo).filter(m => m.naArea && m.km2);
@@ -152,6 +164,7 @@
             licPorTipo: ordem(conta(vig, x => x.g)), licPorAtividade: ordem(conta(vig, x => x.a)).slice(0, 10),
             outPorTipo: ordem(conta(outVal, x => x.tipo)), bacias: ordem(conta(out, x => x.bacia)), corpos: ordem(conta(outVal, x => x.corpo)).slice(0, 8),
             setores: ordem(conta(outVal, x => x.setor)).slice(0, 6), finalidades: ordem(conta(outVal.flatMap(x => (x.fin || '').split(/,\s*/).filter(Boolean).map(f => ({ f }))), x => x.f)).slice(0, 8),
+            minPorFase: ordem(conta(MR.min, x => x.g)), minPorSubs: ordem(conta(MR.min, x => x.s)).slice(0, 8), mr: MR,
             lic, out, semCoordMun: dados.reduce((s, d) => s + (d.est ? d.est.sem_coord || 0 : 0), 0)
         };
         res.achados = R.achados(res);
@@ -173,6 +186,12 @@
         if (r.comp.out_razao && r.comp.out_razao >= 1.5) A.push({ n: 'Interpretação', risco: 'Médio', t: `A densidade de outorgas válidas na área é ${r.comp.out_razao.toFixed(1).replace('.', ',')} vezes a média dos municípios com registros na área: indício de pressão sobre os recursos hídricos locais, a confirmar com o balanço hídrico da bacia.` });
         if (k.out_lanc) A.push({ n: 'Fato', t: `${fmt(k.out_lanc)} outorga(s) de lançamento de efluentes. Corpos receptores: ${r.corpos.slice(0, 4).map(c => c[0]).join(', ')}.` });
         if (r.comp.lic_razao && r.comp.lic_razao >= 2) A.push({ n: 'Interpretação', t: `Concentração de atividades licenciadas ${r.comp.lic_razao.toFixed(1).replace('.', ',')} vezes acima da média municipal: área de uso intenso, com maior chance de impactos cumulativos.` });
+        const mr = r.mr || {};
+        if (k.min_lavra) A.push({ n: 'Fato', risco: 'Médio', t: `${fmt(k.min_lavra)} direito(s) de lavra/extração mineral na área (ANM): ${(mr.min || []).filter(x => x.g === 'Lavra / extração').slice(0, 3).map(x => `${x.pr} – ${(x.s || '').toLowerCase()}`).join('; ')}. Verificar servidão mineral, renda ao superficiário e licenciamento da lavra.`, op: 'Mineração' });
+        if (k.min_total - k.min_lavra > 0) A.push({ n: 'Fato', t: `${fmt(k.min_total - k.min_lavra)} processo(s) minerário(s) de pesquisa ou em disponibilidade na área (ANM).` });
+        if (k.rsk) A.push({ n: 'Fato', risco: 'Alto', t: `${fmt(k.rsk)} setor(es) de risco geológico mapeado(s) pelo SGB na área (${[...new Set((mr.rsk || []).map(x => (x.gr || '').toLowerCase()))].join(', ')}).`, op: 'Risco geológico' });
+        if (k.sit) A.push({ n: 'Fato', risco: 'Médio', t: `${fmt(k.sit)} sítio(s) arqueológico(s) cadastrado(s) no IPHAN na área ou a até 1 km. Obras e licenciamento podem exigir FCA e estudo arqueológico (IN IPHAN 01/2015).`, op: 'Patrimônio arqueológico' });
+        if (k.com) A.push({ n: 'Fato', risco: 'Médio', t: `${(mr.com || []).slice(0, 2).map(x => `${x.g} ${x.n} a ${fmt(Math.round(x.dm / 100) / 10)} km`).join('; ')} – comunidade tradicional a menos de 10 km (Portaria Interministerial 60/2015).`, op: 'Comunidades tradicionais' });
         return A;
     };
 
@@ -306,6 +325,14 @@ ${kpi(k.out_val, 'outorgas válidas')}${kpi(k.out_venc6, 'outorgas vencem em at�
 <div class="cols"><div><h3>Outorgas válidas por tipo</h3>${kv(r.outPorTipo)}<h3>Bacias</h3>${kv(r.bacias)}</div><div><h3>Corpos hídricos / aquíferos</h3>${kv(r.corpos)}<h3>Finalidades de uso</h3>${kv(r.finalidades)}</div></div>
 <p class="box">Densidade na área: ${r.comp.out_km2_area.toFixed(1).replace('.', ',')} outorgas válidas/km², contra ${r.comp.out_km2_mun.toFixed(2).replace('.', ',')}/km² na média do(s) município(s)${r.comp.out_razao ? ` (${r.comp.out_razao.toFixed(1).replace('.', ',')}×)` : ''}. Licenças vigentes: ${r.comp.lic_km2_area.toFixed(1).replace('.', ',')}/km² contra ${r.comp.lic_km2_mun.toFixed(2).replace('.', ',')}/km²${r.comp.lic_razao ? ` (${r.comp.lic_razao.toFixed(1).replace('.', ',')}×)` : ''}.</p>
 
+<h2>4b. Mineração, riscos e patrimônio</h2>
+${!k.mr_base ? '<p class="vazio">Base de mineração e riscos ainda não carregada para estes municípios.</p>' : `
+<div class="kpis">${kpi(k.min_lavra, 'direitos de lavra/extração (ANM)', k.min_lavra ? 'a' : '')}${kpi(k.min_total - k.min_lavra, 'processos de pesquisa ou disponibilidade')}${kpi(k.rsk, 'setores de risco geológico (SGB)', k.rsk ? 'v' : '')}${kpi(k.sit, 'sítios arqueológicos (IPHAN) até 1 km', k.sit ? 'a' : '')}${kpi(k.com, 'terras indígenas/quilombolas até 10 km', k.com ? 'a' : '')}</div>
+<h3>Processos minerários (ANM/SIGMINE)</h3>${!(r.mr.min || []).length ? '<p class="vazio">Nenhum processo minerário na área.</p>' : `<table><thead><tr><th>Dist. (m)</th><th>Processo</th><th>Fase</th><th>Substância</th><th>Uso</th><th>Área (ha)</th><th>Titular</th></tr></thead><tbody>${r.mr.min.slice(0, 80).map(x => `<tr><td class="nu">${x.dm ? fmtN(x.dm) : 'na área'}</td><td>${esc(x.pr || '')}</td><td>${esc(x.f || '')}</td><td>${esc(x.s || '')}</td><td>${esc(x.u || '')}</td><td class="nu">${esc(x.a || '')}</td><td>${esc(op.anonimizar && x.t === 'Pessoa física' ? 'Pessoa física (nome omitido)' : x.t || '')}</td></tr>`).join('')}</tbody></table>`}
+<h3>Setores de risco geológico (SGB)</h3>${!(r.mr.rsk || []).length ? '<p class="vazio">Nenhum setor de risco do SGB na área. Atenção: muitos municípios ainda não foram mapeados pelo SGB – ausência de setor não significa ausência de risco.</p>' : `<table><thead><tr><th>Dist. (m)</th><th>Setor</th><th>Grau</th><th>Processo</th><th>Local</th><th>Pessoas</th><th>Intervenção sugerida</th></tr></thead><tbody>${r.mr.rsk.map(x => `<tr><td class="nu">${x.dm ? fmtN(x.dm) : 'na área'}</td><td>${esc(x.n || '')}</td><td>${esc(x.gr || '')}</td><td>${esc(x.pr || '')}</td><td>${esc(x.lo || '')}</td><td class="nu">${esc(x.pe || '')}</td><td>${esc(x.iv || '')}</td></tr>`).join('')}</tbody></table>`}
+<h3>Sítios arqueológicos (IPHAN) na área ou a até 1 km</h3>${!(r.mr.sit || []).length ? '<p class="vazio">Nenhum sítio cadastrado.</p>' : `<table><thead><tr><th>Dist. (m)</th><th>Sítio</th><th>Código CNSA</th></tr></thead><tbody>${r.mr.sit.map(x => `<tr><td class="nu">${x.dm ? fmtN(x.dm) : 'na área'}</td><td>${esc(x.n || '')}</td><td>${esc(x.c || '')}</td></tr>`).join('')}</tbody></table>`}
+<h3>Terras indígenas e territórios quilombolas a até 10 km</h3>${!(r.mr.com || []).length ? '<p class="vazio">Nenhuma.</p>' : `<table><thead><tr><th>Dist. (km)</th><th>Tipo</th><th>Nome</th><th>Situação / processo</th></tr></thead><tbody>${r.mr.com.map(x => `<tr><td class="nu">${x.dm ? (x.dm / 1000).toFixed(1).replace('.', ',') : 'na área'}</td><td>${esc(x.g || '')}</td><td>${esc(x.n || '')}</td><td>${esc(x.si || x.pr || '')}</td></tr>`).join('')}</tbody></table>`}`}
+
 <h2>5. Pontos de atenção</h2>
 <h3>Licenças que vencem em até 6 meses (${fmtN(lv6.length)})</h3>${tabLic(lv6)}
 <h3>Atividades com uso típico de água sem outorga de captação próxima (${fmtN(lag.length)})</h3>${tabLic(lag)}
@@ -319,7 +346,7 @@ ${kpi(k.out_val, 'outorgas válidas')}${kpi(k.out_venc6, 'outorgas vencem em at�
 ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportunidades de atuação' : 'Recomendações CS'}</h2><ul class="ach">${Object.keys(ops).map(o => `<li><span class="cl">Recomendação CS</span>${esc(o)}: ${esc({ 'Renovação de licença': 'organizar o calendário de renovações e condicionantes antes do prazo de 120 dias.', 'Regularização de licenciamento': 'confirmar a situação das atividades com licença vencida e, se em operação, regularizar junto ao IAT.', 'Outorga de captação': 'verificar a fonte de água das atividades sem outorga localizada e requerer outorga ou dispensa no SIGARH.', 'Regularização de outorga': 'regularizar as outorgas irregulares para afastar autuação e restrição de uso.', 'Renovação de outorga': 'protocolar a renovação das outorgas vencidas ou a vencer.' }[o] || '')}</li>`).join('')}</ul>` : ''}
 
 <h2>${Object.keys(ops).length ? 8 : 7}. Limitações e fontes</h2>
-<p class="box">Relatório gerado automaticamente a partir de dados públicos: IAT/GeoPR (licenciamento ambiental SGA/SIA e outorgas do SIGARH), consulta pública do SGA e IBGE, consolidados pela plataforma Licenças e Outorgas do Paraná da CS. Só entram registros com coordenada; ${fmtN(r.semCoordMun)} licenças vigentes do(s) município(s) não têm coordenada no IAT e podem estar na área. As localizações são as declaradas pelos titulares e podem conter erros. “Hipótese a verificar” indica achado que depende de confirmação documental ou de campo. Este Raio X não substitui vistoria, parecer técnico, consulta a restrições territoriais (unidades de conservação, APP, terras indígenas) nem diagnóstico ambiental completo.${op.anonimizar ? ' Nomes de pessoas físicas foram omitidos.' : ''}</p>
+<p class="box">Relatório gerado automaticamente a partir de dados públicos: IAT/GeoPR (licenciamento ambiental SGA/SIA e outorgas do SIGARH), consulta pública do SGA, ANM (SIGMINE), SGB (setorização de risco), IPHAN (CNSA), Funai, Incra e IBGE, consolidados pela plataforma Licenças e Outorgas do Paraná da CS. Só entram registros com coordenada; ${fmtN(r.semCoordMun)} licenças vigentes do(s) município(s) não têm coordenada no IAT e podem estar na área. As localizações são as declaradas pelos titulares e podem conter erros. “Hipótese a verificar” indica achado que depende de confirmação documental ou de campo. Este Raio X não substitui vistoria, parecer técnico, consulta a restrições territoriais (unidades de conservação, APP, terras indígenas) nem diagnóstico ambiental completo.${op.anonimizar ? ' Nomes de pessoas físicas foram omitidos.' : ''}</p>
 <footer>CS Consultoria Ambiental · Londrina/PR · Raio X Ambiental da Área v${r.versao}${r.finalidade === 'Prospecção' ? ' · DOCUMENTO DE USO INTERNO' : ''}</footer>
 </div></body></html>`;
     };
