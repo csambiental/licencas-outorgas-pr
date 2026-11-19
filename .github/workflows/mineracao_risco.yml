@@ -14,10 +14,11 @@ jobs:
           sudo apt-get -qq update && sudo apt-get -qq install -y build-essential libsqlite3-dev zlib1g-dev
           git clone -q --depth 1 https://github.com/felt/tippecanoe.git /tmp/tippecanoe && make -s -C /tmp/tippecanoe -j4 && sudo make -s -C /tmp/tippecanoe install
       - run: |
+          pip install -q cryptography
           python3 tools/mineracao_risco.py saida
           rm -rf saida/tiles_mr
-          tippecanoe -e saida/tiles_mr --no-tile-compression --force -Z6 -z13 --drop-densest-as-needed --coalesce-densest-as-needed -L min:saida/min.geojson -L rsk:saida/rsk.geojson
-          rm -f saida/min.geojson saida/rsk.geojson; du -sh saida/tiles_mr
+          tippecanoe -e saida/tiles_mr --no-tile-compression --force -Z6 -z13 --drop-densest-as-needed --coalesce-densest-as-needed -L min:saida/min.geojson -L rsk:saida/rsk.geojson -L sit:saida/sit.geojson -L com:saida/com.geojson
+          rm -f saida/min.geojson saida/rsk.geojson saida/sit.geojson saida/com.geojson; du -sh saida/tiles_mr
       - run: |
           cd saida
           git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

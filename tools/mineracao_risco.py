@@ -2,13 +2,14 @@
 Uso: python3 tools/mineracao_risco.py saida
 Gera saida/min.geojson e saida/rsk.geojson (entrada do tippecanoe) e saida/mineracao_risco.json (totais do estado).
 Titular pessoa física não é publicado (só 'Pessoa física')."""
-import json, re, sys, time, urllib.parse, urllib.request
+import json, os, re, sys, time, urllib.parse, urllib.request
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import ssl_aia
 SAIDA = sys.argv[1]
 UA = {'User-Agent': 'csambiental-licencas-outorgas'}
 
 def http(url, tent=5):
     for t in range(tent):
-        try: return json.loads(urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=240).read())
+        try: return json.loads(urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=240, context=ssl_aia.contexto(url) if 'anm.gov.br' in url else None).read())
         except Exception as e: print('  tentativa', t + 1, str(e)[:160], flush=True); time.sleep(10 * (t + 1))
     raise RuntimeError('falhou ' + url[:160])
 
@@ -46,10 +47,32 @@ for f in baixar('https://geoportal.sgb.gov.br/server/rest/services/gestaoterrito
          'lo': (a.get('local') or '').strip(), 'dt': d, 'ed': n('num_edif'), 'pe': n('num_pess'), 'iv': re.sub(r'\s+', ' ', a.get('sug_interv') or '').strip()[:250]}
     rsks.append({'type': 'Feature', 'geometry': f['geometry'], 'properties': {k: v for k, v in p.items() if v}})
 
+# patrimônio arqueológico (IPHAN/CNSA), terras indígenas (Funai) e territórios quilombolas (Incra) – serviço da ANM
+SC = 'https://geo.anm.gov.br/arcgis/rest/services/SIGMINE/sociedade_cultura/MapServer'
+def baixar_env(base, xmin=-54.7, ymin=-26.8, xmax=-47.9, ymax=-22.4, pagina=1000):
+    env = json.dumps({'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax, 'spatialReference': {'wkid': 4326}})
+    feats, off = [], 0
+    while True:
+        q = {'geometry': env, 'geometryType': 'esriGeometryEnvelope', 'spatialRel': 'esriSpatialRelIntersects', 'outFields': '*', 'returnGeometry': 'true',
+             'outSR': '4326', 'resultOffset': off, 'resultRecordCount': pagina, 'f': 'geojson', 'geometryPrecision': 6}
+        r = http(base + '/query?' + urllib.parse.urlencode(q)); fs = r.get('features', []); feats += fs
+        if len(fs) < pagina: break
+        off += len(fs)
+    return [f for f in feats if f.get('geometry')]
+sits = [{'type': 'Feature', 'geometry': f['geometry'], 'properties': {'n': re.sub(r'\s+', ' ', f['properties'].get('NMSitioArqueologico') or '').strip(), 'c': f['properties'].get('CDSitioArqueologico') or ''}}
+        for f in baixar_env(SC + '/1') if str(f['properties'].get('CDSitioArqueologico') or '').startswith('PR')]
+coms = []
+for f in baixar_env(SC + '/2'):
+    a = f['properties']; coms.append({'type': 'Feature', 'geometry': f['geometry'], 'properties': {k: v for k, v in {'g': 'Terra indígena', 'n': a.get('NMTerraIndigena') or '', 'si': a.get('DSSituacao') or '', 'a': f"{float(a.get('QTAreaHA') or 0):,.0f}".replace(',', '.')}.items() if v}})
+for f in baixar_env(SC + '/3'):
+    a = f['properties']; coms.append({'type': 'Feature', 'geometry': f['geometry'], 'properties': {k: v for k, v in {'g': 'Território quilombola', 'n': a.get('NMTerritorioQuilombola') or '', 'pr': a.get('DSProcesso') or '', 'a': f"{float(a.get('QTAreaHA') or 0):,.0f}".replace(',', '.')}.items() if v}})
+json.dump({'type': 'FeatureCollection', 'features': sits}, open(f'{SAIDA}/sit.geojson', 'w'), ensure_ascii=False, separators=(',', ':'))
+json.dump({'type': 'FeatureCollection', 'features': coms}, open(f'{SAIDA}/com.geojson', 'w'), ensure_ascii=False, separators=(',', ':'))
+
 json.dump({'type': 'FeatureCollection', 'features': mins}, open(f'{SAIDA}/min.geojson', 'w'), ensure_ascii=False, separators=(',', ':'))
 json.dump({'type': 'FeatureCollection', 'features': rsks}, open(f'{SAIDA}/rsk.geojson', 'w'), ensure_ascii=False, separators=(',', ':'))
 from collections import Counter
 res = {'processos_minerarios': len(mins), 'por_fase': Counter(f['properties']['g'] for f in mins),
-       'setores_risco': len(rsks), 'municipios_com_setorizacao': len({f['properties'].get('mu') for f in rsks}), 'atualizado': time.strftime('%d/%m/%Y')}
+       'setores_risco': len(rsks), 'municipios_com_setorizacao': len({f['properties'].get('mu') for f in rsks}), 'sitios_arqueologicos': len(sits), 'terras_indigenas_quilombolas': len(coms), 'atualizado': time.strftime('%d/%m/%Y')}
 json.dump(res, open(f'{SAIDA}/mineracao_risco.json', 'w'), ensure_ascii=False, indent=1)
 print(res)

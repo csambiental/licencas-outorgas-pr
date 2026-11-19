@@ -29,13 +29,13 @@ jobs:
           python3 tools/contatos_cripto.py saida
       - name: Mineração (ANM) e setores de risco (SGB)
         continue-on-error: true
-        run: python3 tools/mineracao_risco.py saida
+        run: pip install -q cryptography && python3 tools/mineracao_risco.py saida
       - name: Gerar mosaicos de pontos
         run: |
           tippecanoe -e saida/tiles --no-tile-compression --force -Z6 -z13 -B10 -r1.7 --drop-densest-as-needed --extend-zooms-if-still-dropping \
             -L lic:saida/pontos_lic.geojson -L out:saida/pontos_out.geojson
-          if [ -f saida/min.geojson ]; then tippecanoe -e saida/tiles_mr --no-tile-compression --force -Z6 -z13 --drop-densest-as-needed --coalesce-densest-as-needed -L min:saida/min.geojson -L rsk:saida/rsk.geojson; fi
-          rm -f saida/pontos_lic.geojson saida/pontos_out.geojson saida/min.geojson saida/rsk.geojson
+          if [ -f saida/min.geojson ]; then tippecanoe -e saida/tiles_mr --no-tile-compression --force -Z6 -z13 --drop-densest-as-needed --coalesce-densest-as-needed -L min:saida/min.geojson -L rsk:saida/rsk.geojson -L sit:saida/sit.geojson -L com:saida/com.geojson; fi
+          rm -f saida/pontos_lic.geojson saida/pontos_out.geojson saida/min.geojson saida/rsk.geojson saida/sit.geojson saida/com.geojson
           du -sh saida; find saida -type f | wc -l
       - name: Gravar no ramo "dados" (um único commit, sem histórico)
         run: |

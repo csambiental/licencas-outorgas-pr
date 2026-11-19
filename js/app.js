@@ -66,8 +66,11 @@ function adicionarCamadas() {
     // mineração (ANM) e setores de risco (SGB), por baixo dos pontos
     map.addLayer({ id: 'min-fill', type: 'fill', source: 'mr', 'source-layer': 'min', minzoom: 7, paint: { 'fill-color': ['match', ['get', 'g'], ...Object.entries(COR_MIN).flat(), '#8d6e63'], 'fill-opacity': 0.22 } });
     map.addLayer({ id: 'min-linha', type: 'line', source: 'mr', 'source-layer': 'min', minzoom: 7, paint: { 'line-color': ['match', ['get', 'g'], ...Object.entries(COR_MIN).flat(), '#8d6e63'], 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.4, 13, 1.6] } });
+    map.addLayer({ id: 'com-fill', type: 'fill', source: 'mr', 'source-layer': 'com', paint: { 'fill-color': ['match', ['get', 'g'], 'Terra indígena', '#e65100', '#00897b'], 'fill-opacity': 0.18 } });
+    map.addLayer({ id: 'com-linha', type: 'line', source: 'mr', 'source-layer': 'com', paint: { 'line-color': ['match', ['get', 'g'], 'Terra indígena', '#e65100', '#00897b'], 'line-width': 1.8, 'line-dasharray': [2, 1] } });
     map.addLayer({ id: 'rsk-fill', type: 'fill', source: 'mr', 'source-layer': 'rsk', paint: { 'fill-color': ['match', ['get', 'gr'], ...Object.entries(COR_RSK).flat(), '#ef6c00'], 'fill-opacity': 0.45 } });
     map.addLayer({ id: 'rsk-linha', type: 'line', source: 'mr', 'source-layer': 'rsk', paint: { 'line-color': '#7f0000', 'line-width': ['interpolate', ['linear'], ['zoom'], 7, 0.8, 13, 2.4] } });
+    map.addLayer({ id: 'sit-pt', type: 'circle', source: 'mr', 'source-layer': 'sit', minzoom: 8, paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 2.5, 13, 5.5], 'circle-color': '#6a1b9a', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } });
     map.addLayer({ id: 'lic-venc', type: 'circle', source: 'pts', 'source-layer': 'lic', minzoom: 8, filter: ['==', ['get', 'si'], 'Vencida'],
         paint: { 'circle-radius': raio, 'circle-color': '#9e9e9e', 'circle-stroke-color': '#fff', 'circle-stroke-width': 0.8 } });
     map.addLayer({ id: 'lic-vig', type: 'circle', source: 'pts', 'source-layer': 'lic', minzoom: 8, filter: ['!=', ['get', 'si'], 'Vencida'],
@@ -85,8 +88,10 @@ function adicionarCamadas() {
         '<div class="it"><span class="pt" style="background:#fff;box-shadow:0 0 0 2px #c62828"></span>Contorno vermelho: vencida/irregular · laranja: vence em 6 meses</div>' +
         '<div class="rot">Processos minerários (ANM)</div>' + Object.entries(COR_MIN).map(([k, c]) => `<div class="it"><span class="sw" style="background:${c}"></span>${k}</div>`).join('') +
         '<div class="rot">Setores de risco geológico (SGB)</div>' + Object.entries(COR_RSK).map(([k, c]) => `<div class="it"><span class="sw" style="background:${c}"></span>Risco ${k.toLowerCase()}</div>`).join('') +
+        '<div class="rot">Patrimônio e comunidades tradicionais</div><div class="it"><span class="pt" style="background:#6a1b9a"></span>Sítio arqueológico (IPHAN/CNSA)</div>' +
+        '<div class="it"><span class="sw" style="background:#e65100"></span>Terra indígena (Funai)</div><div class="it"><span class="sw" style="background:#00897b"></span>Território quilombola (Incra)</div>' +
         '<div class="it">Município sem setor não significa ausência de risco: pode não ter sido mapeado.</div><div class="rot">Pontos e áreas aparecem ao aproximar o mapa</div>';
-    for (const id of ['lic-vig', 'lic-venc', 'out-val', 'out-prob', 'rsk-fill', 'min-fill']) {
+    for (const id of ['lic-vig', 'lic-venc', 'out-val', 'out-prob', 'rsk-fill', 'min-fill', 'sit-pt', 'com-fill']) {
         map.on('click', id, e => { if (window.modoRaioX) return; e.originalEvent._pt = true; popup(e.features[0], e.lngLat); });
         map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer');
         map.on('mouseleave', id, () => map.getCanvas().style.cursor = '');
@@ -355,6 +360,8 @@ function popup(f, ll) {
     let h;
     if (f.layer.id === 'min-fill') h = `<div class="pop"><h4>Processo minerário ${esc(p.pr)}</h4><table>${lin('Fase', p.f)}${lin('Substância', p.s)}${lin('Uso', p.u)}${lin('Área (ha)', p.a)}${lin('Ano', p.an)}${lin('Titular', p.t)}${lin('Último evento', p.e)}</table>
         <a href="https://sistemas.anm.gov.br/SCM/Extra/site/admin/pesquisarProcessos.aspx" target="_blank" rel="noopener">Consultar no Cadastro Mineiro (ANM) ↗</a><p class="hint">Fonte: ANM – SIGMINE.</p></div>`;
+    else if (f.layer.id === 'sit-pt') h = `<div class="pop"><h4>Sítio arqueológico ${esc(p.n)}</h4><table>${lin('Código IPHAN (CNSA)', p.c)}</table><p class="hint">Fonte: IPHAN – Cadastro Nacional de Sítios Arqueológicos. Obras próximas podem exigir FCA e estudo arqueológico (IN IPHAN 01/2015).</p></div>`;
+    else if (f.layer.id === 'com-fill') h = `<div class="pop"><h4>${esc(p.g)} ${esc(p.n)}</h4><table>${lin('Situação', p.si)}${lin('Processo', p.pr)}${lin('Área (ha)', p.a)}</table><p class="hint">Fonte: ${p.g === 'Terra indígena' ? 'Funai' : 'Incra'}. Empreendimentos próximos podem exigir manifestação no licenciamento (Portaria Interministerial 60/2015).</p></div>`;
     else if (f.layer.id === 'rsk-fill') h = `<div class="pop"><h4>Setor de risco ${esc(p.n)}</h4><table>${lin('Município', p.mu)}${lin('Grau de risco', p.gr)}${lin('Processo', p.pr)}${lin('Local', p.lo)}${lin('Mapeado em', p.dt)}${lin('Edificações', p.ed)}${lin('Pessoas (estimativa)', p.pe)}${lin('Intervenção sugerida', p.iv)}</table>
         <a href="https://geoportal.sgb.gov.br/desastres/" target="_blank" rel="noopener">Mapa para Prevenção de Desastres (SGB) ↗</a></div>`;
     else if (f.layer.id.startsWith('lic')) h = `<div class="pop"><h4>${esc(p.n)}</h4><table>${lin('Atividade', p.a)}${lin('Atividade específica', p.e !== p.a ? p.e : '')}${lin('Modalidade', `${p.s} – ${p.g}`)}
@@ -364,7 +371,7 @@ function popup(f, ll) {
         ${lin('Situação', p.situ + (p.st && p.st !== p.situ ? ` (${p.st})` : ''))}${lin('Publicação', p.pub)}${lin('Vencimento', p.venc)}${lin('Finalidade', p.fin)}
         ${lin('Vazão máxima', p.vazao ? p.vazao + ' m³/h' : '')}${lin('Corpo hídrico / aquífero', p.corpo)}${lin('Bacia', p.bacia)}${lin('Setor', p.setor)}</table>${window.blocoEmitir ? blocoEmitir({ nome: p.nome, c: p.c, num: p.num, xy: [ll.lng, ll.lat] }) : ''}</div>`;
     const pop = new mapboxgl.Popup({ maxWidth: '360px' }).setLngLat(ll).setHTML(h).addTo(map);
-    if (CHAVE && p.c && !/^(min|rsk)/.test(f.layer.id)) {
+    if (CHAVE && p.c && !/^(min|rsk|sit|com)/.test(f.layer.id)) {
         const lic = f.layer.id.startsWith('lic');
         htmlContato(String(p.c), lic ? 'l' : 'o', lic ? p.p : p.num).then(extra => { if (extra && pop.isOpen()) pop.setHTML(h.replace(/<\/div>$/, extra + '</div>')); });
     }
