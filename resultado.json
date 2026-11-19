@@ -1,0 +1,28 @@
+{
+ "curitiba_risco": {
+  "min-fill": 404,
+  "rsk-fill": 36,
+  "sit-pt": 3,
+  "com-fill": 0,
+  "lic-vig": 426
+ },
+ "norte_mineracao": {
+  "min-fill": 66,
+  "rsk-fill": 0,
+  "sit-pt": 5,
+  "com-fill": 0,
+  "lic-vig": 344
+ },
+ "grandes_rios_sitios": {
+  "min-fill": 41,
+  "rsk-fill": 0,
+  "sit-pt": 5,
+  "com-fill": 0,
+  "lic-vig": 354
+ },
+ "exemplo": {
+  "n": "Rio Ivaa - GR-01",
+  "c": "PR4108700BAST00020"
+ },
+ "erros": []
+}
