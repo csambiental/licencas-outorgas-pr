@@ -225,10 +225,16 @@
             <select class="emTipo"><optgroup label="Fase 1 – dados públicos (imediato)"><option value="emp">Diagnóstico do empreendimento (Raio X)</option><option value="area1">Raio X da área – 1 km</option><option value="area3">Raio X da área – 3 km</option>${CHAVE ? '<option value="prosp">Ficha de prospecção (uso interno)</option>' : ''}</optgroup>
             <optgroup label="Fase 2 – documentos e vistoria"><option value="tec">Abrir diagnóstico completo (relatório unificado)</option></optgroup></select>
             <select class="emFin"><option value="Diagnóstico">Para análise técnica da CS</option><option value="Entrega">Para entregar ao cliente</option></select>
+            <label class="emPdf" title="Baixe o PDF em 'Abrir a licença no SGA' e anexe aqui. A leitura é feita só no seu navegador.">📎 Anexar PDF da licença (opcional)<input type="file" accept="application/pdf,.pdf" multiple hidden></label><div class="emPdfSt"></div>
             <div class="emB"><button class="emGo">Emitir</button><button class="emPainel">Ver no painel</button></div></div>`;
     };
     const janela = () => { const w = window.open('', '_blank'); if (w) w.document.write('<p style="font-family:sans-serif;padding:24px">Gerando relatório da CS…</p>'); return w; };
     const escrever = (w, html) => { w.document.open(); w.document.write(html); w.document.close(); };
+    document.addEventListener('change', ev => {
+        const i = ev.target.closest('.emPdf input'); if (!i) return;
+        const st = i.closest('.emitir').querySelector('.emPdfSt');
+        st.textContent = i.files.length ? `${i.files.length} PDF anexado(s): ${[...i.files].map(f => f.name).join(', ')} – será lido ao emitir` : '';
+    });
     document.addEventListener('click', async ev => {
         const b = ev.target.closest('.emGo, .emPainel'); if (!b) return;
         ev.preventDefault(); ev.stopPropagation();
@@ -246,6 +252,8 @@
                 return escrever(w, RaioX.relatorioHTML(RaioX.calcular(a, dados, MUNS, op), op));
             }
             const op = { finalidade: fin, anonimizar: fin === 'Entrega', contatos: fin === 'Prospecção' && !!CHAVE, logo, link: linkEmp(ref) };
+            const pdfs = [...(box.querySelector('.emPdf input').files || [])];
+            if (pdfs.length && window.LeitorLicenca) op.licencasPDF = await Promise.all(pdfs.map(a => LeitorLicenca.ler(a).catch(err => ({ arquivo: a.name, erro: err.message, condicionantes: [] }))));
             const e = await calcEmp(ref, op);
             if (tipo !== 'tec') { op.imgs = await RaioX.embutirImagens(e); return escrever(w, RaioX.relatorioEmpreendimentoHTML(e, op)); }
             // abertura do diagnóstico técnico: tipologias sugeridas + pré-preenchimento da matriz

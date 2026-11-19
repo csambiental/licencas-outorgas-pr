@@ -130,3 +130,7 @@ ul.rxach b { font-size: .7rem; text-transform: uppercase; color: var(--suave); m
 .ferr-acoes { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 4px; }
 .ferr-acoes button { border: 1px solid #0091ea; background: #fff; color: #0277bd; border-radius: 6px; padding: 4px 9px; font-size: .78rem; cursor: pointer; }
 @media (max-width: 700px) { .ferr-painel { right: 48px; max-width: 220px; } }
+
+.emPdf { display: block; margin: 6px 0 2px; padding: 6px 8px; border: 1px dashed #2e7d32; border-radius: 6px; color: #2e7d32; font-size: .8rem; cursor: pointer; text-align: center; background: #f6fbf6; }
+.emPdf:hover { background: #e8f5e9; }
+.emPdfSt { font-size: .74rem; color: #455a64; margin-bottom: 4px; }

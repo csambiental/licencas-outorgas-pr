@@ -57,7 +57,7 @@ def sem_acento(t): return unicodedata.normalize('NFD', t or '').encode('ascii', 
 def chave_nome(t): return re.sub(r'[^A-Z0-9]', '', re.sub(r'\b(LTDA|ME|EPP|EIRELI|S/?A|LIMITADA)\b', '', sem_acento(t)))
 def data(ms):
     if not isinstance(ms, (int, float)): return None
-    try: return (datetime.datetime.fromtimestamp(ms / 1000, datetime.timezone.utc) - datetime.timedelta(hours=3)).date()
+    try: return datetime.datetime.fromtimestamp(ms / 1000, datetime.timezone.utc).date()   # a base grava a data à meia-noite UTC; subtrair 3 h jogava para o dia anterior
     except Exception: return None
 def br(d): return d.strftime('%d/%m/%Y') if d else ''
 def proto_fmt(n): s = str(n).rjust(9, '0'); return f'{s[:2]}.{s[2:5]}.{s[5:8]}-{s[8:]}'

@@ -590,6 +590,24 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         }
         return out;
     };
+    R.secaoLicencaPDF = function (e, L) {
+        const base = new Map((e.lic || []).map(x => [String(x.p || '').replace(/\D/g, ''), x]));
+        return L.map(l => {
+            if (l.erro) return `<p class="vazio">${esc(l.arquivo)}: não foi possível ler o PDF (${esc(l.erro)}).</p>`;
+            if (!l.temTexto) return `<p class="vazio">${esc(l.arquivo)}: o PDF não tem texto (documento digitalizado). Confira as condicionantes manualmente.</p>`;
+            const b = base.get(String(l.protocolo || '').replace(/\D/g, '')), avisos = [];
+            if (l.protocolo && !b) avisos.push(`o protocolo ${esc(l.protocolo)} não está entre as licenças deste titular na base pública – confira se o PDF é deste empreendimento`);
+            if (b && l.validade && b.va && l.validade !== b.va) avisos.push(`validade no PDF (${esc(l.validade)}) diferente da base pública (${esc(b.va)}) – vale a do documento`);
+            const cond = l.condicionantes || [];
+            return `<h3>${esc(l.modalidade || 'Licença')} ${l.numero ? 'nº ' + esc(l.numero) : ''} <span class="hint">(${esc(l.arquivo)})</span></h3>
+<table><tbody>${[['Protocolo', l.protocolo], ['Emissão', l.emissao], ['Validade', l.validade], ['Atividade', l.atividade]].filter(([, v]) => v).map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
+${avisos.length ? `<p class="obs"><b>Atenção:</b> ${avisos.join('; ')}.</p>` : ''}
+${cond.length ? `<p>${cond.length} condicionante(s) identificada(s); ${cond.filter(c => c.prazo).length} com prazo ou periodicidade expressos no texto.</p>
+<table><thead><tr><th>Nº</th><th>Condicionante (texto da licença)</th><th>Prazo / periodicidade</th></tr></thead><tbody>${cond.map(c => `<tr><td>${esc(c.n)}</td><td>${esc(c.texto)}</td><td>${esc(c.prazo || '–')}</td></tr>`).join('')}</tbody></table>`
+                : '<p class="vazio">Nenhuma lista de condicionantes reconhecida automaticamente neste PDF. Confira o documento.</p>'}
+<p class="hint">Leitura automática do texto do PDF: confira sempre com o documento original. O arquivo foi lido apenas no navegador e não foi enviado a nenhum servidor.</p>`;
+        }).join('');
+    };
     R.relatorioEmpreendimentoHTML = function (e, op) {
         op = op || {};
         const agora = new Date(), G = R.checklistEmpreendimento(e), N = R.pendenciasEmpreendimento(e), AG = R.agendaEmpreendimento(e, agora), todos = G.flatMap(g => g.itens);
@@ -730,6 +748,7 @@ ${sec('Síntese executiva', 'Onde está, como está e o que fazer agora', `
   <h4>O que fazer agora</h4>
   <ul class="lst">${acoes.slice(0, 6).map(a => `<li><span class="ic ${a.c}">${ICON[a.c]}</span><div>${esc(a.t)}<small>${esc(a.r)}</small></div><span class="q">${esc(a.q)}</span></li>`).join('')}</ul>`)}
 
+${(op.licencasPDF || []).length ? sec('Leitura da licença anexada', 'Dados e condicionantes lidos do PDF do SGA anexado na emissão', R.secaoLicencaPDF(e, op.licencasPDF), false) : ''}
 ${sec('Obrigações e prazos em vigência', 'O que a empresa precisa cumprir durante a validade das licenças e outorgas', `
   <div class="placar" style="grid-template-columns:repeat(4,1fr)"><div class="no"><b>${agCont('no')}</b><span>vencidos</span></div><div class="at"><b>${agCont('at')}</b><span>próximos (até 120 dias)</span></div><div class="ok"><b>${agCont('ok')}</b><span>em dia</span></div><div class="pd"><b>${agCont('pd')}</b><span>comprovar na Fase 2</span></div></div>
   ${agendaT}
