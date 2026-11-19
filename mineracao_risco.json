@@ -1,0 +1,13 @@
+{
+ "processos_minerarios": 9658,
+ "por_fase": {
+  "Lavra / extração": 6050,
+  "Disponibilidade": 322,
+  "Pesquisa mineral": 3286
+ },
+ "setores_risco": 244,
+ "municipios_com_setorizacao": 38,
+ "sitios_arqueologicos": 2483,
+ "terras_indigenas_quilombolas": 99,
+ "atualizado": "19/11/2026"
+}
