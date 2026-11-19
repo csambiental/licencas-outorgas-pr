@@ -59,7 +59,10 @@ if (!fs.existsSync(path.join(BASE, '.git'))) {
 const ler = f => JSON.parse(fs.readFileSync(path.join(BASE, f), 'utf8'));
 const munGeo = ler('municipios.geojson');
 const addSparse = L => { if (L.length) git(`sparse-checkout add ${L.join(' ')}`); };
-const carregar = cs => { addSparse(cs.filter(c => !fs.existsSync(path.join(BASE, 'm', c + '.json'))).map(c => `/m/${c}.json`)); return cs.map(c => ler(`m/${c}.json`)); };
+const carregar = cs => {
+    addSparse(cs.filter(c => !fs.existsSync(path.join(BASE, 'm', c + '.json'))).map(c => `/m/${c}.json`).concat(cs.map(c => `/mr/${c}.json`)));
+    return cs.map(c => { const d = ler(`m/${c}.json`); try { d.mr = fs.existsSync(path.join(BASE, 'mr', c + '.json')) ? ler(`mr/${c}.json`) : {}; } catch (e) { d.mr = {}; } return d; });
+};
 const semAc = t => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 let cods, dados, ref = null;
 if (MODO_EMP) {
