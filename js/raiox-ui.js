@@ -79,7 +79,7 @@
         map.fitBounds([[area.bbox[0], area.bbox[1]], [area.bbox[2], area.bbox[3]]], { padding: 40 });
         calcular();
     }
-    map.on('click', e => { if (window.modoRaioX && !e.originalEvent._rx) { kml = null; centro([e.lngLat.lng, e.lngLat.lat]); } });
+    map.on('click', e => { if (window.modoRaioX && !window.modoMedir && !e.originalEvent._rx) { kml = null; centro([e.lngLat.lng, e.lngLat.lat]); } });
 
     async function calcular() {
         const box = document.getElementById('rxRes'); if (!box) return;

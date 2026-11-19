@@ -92,11 +92,11 @@ function adicionarCamadas() {
         '<div class="it"><span class="sw" style="background:#e65100"></span>Terra indígena (Funai)</div><div class="it"><span class="sw" style="background:#00897b"></span>Território quilombola (Incra)</div>' +
         '<div class="it">Município sem setor não significa ausência de risco: pode não ter sido mapeado.</div><div class="rot">Pontos e áreas aparecem ao aproximar o mapa</div>';
     for (const id of ['lic-vig', 'lic-venc', 'out-val', 'out-prob', 'rsk-fill', 'min-fill', 'sit-pt', 'com-fill']) {
-        map.on('click', id, e => { if (window.modoRaioX) return; e.originalEvent._pt = true; popup(e.features[0], e.lngLat); });
+        map.on('click', id, e => { if (window.modoRaioX || window.modoMedir) return; e.originalEvent._pt = true; popup(e.features[0], e.lngLat); });
         map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer');
         map.on('mouseleave', id, () => map.getCanvas().style.cursor = '');
     }
-    map.on('click', 'mun-fill', e => { if (e.originalEvent._pt || window.modoRaioX) return; abrirMunicipio(e.features[0].properties.cod, false); });
+    map.on('click', 'mun-fill', e => { if (e.originalEvent._pt || window.modoRaioX || window.modoMedir) return; abrirMunicipio(e.features[0].properties.cod, false); });
     document.querySelectorAll('#camadas input[data-c]').forEach(i => i.addEventListener('change', () => i.dataset.c.split(',').forEach(c => map.setLayoutProperty(c, 'visibility', i.checked ? 'visible' : 'none'))));
     document.getElementById('satelite').addEventListener('change', e => {
         if (e.target.checked) { if (!map.getSource('sat')) map.addSource('sat', { type: 'raster', url: 'mapbox://mapbox.satellite', tileSize: 256 }); map.addLayer({ id: 'sat', type: 'raster', source: 'sat' }, 'mun-fill'); }
