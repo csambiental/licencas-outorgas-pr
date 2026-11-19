@@ -1,0 +1,14 @@
+name: Amostra de licenças (PDF do SGA)
+on: { workflow_dispatch: { inputs: { protocolos: { required: true } } } }
+permissions: { contents: write }
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get -qq install -y poppler-utils >/dev/null
+      - run: mkdir -p /tmp/am && (python3 tools/amostra_licencas.py /tmp/am ${{ inputs.protocolos }} 2>&1 | tee /tmp/am/log.txt) || true
+      - run: |
+          cd /tmp/am && git init -q -b amostra-licencas && git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m amostra
+          git push -fq "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" amostra-licencas
