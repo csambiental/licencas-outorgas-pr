@@ -19,6 +19,8 @@ function blocoDeleg(cod) {
     return `<div class="deleg ${g.tipo}"><b>🏛️ Município com licenciamento ambiental próprio – delegação ${g.tipo}</b>
         <span>${g.tipo === 'plena' ? 'A prefeitura licencia as atividades de impacto local' : 'A prefeitura licencia parte das atividades de impacto local'}${g.rot ? `, desde ${g.rot}` : ''}. As licenças municipais são emitidas no mesmo sistema do Estado (SGA) e já aparecem neste mapa; o SGA não informa qual órgão emitiu cada uma.${g.desde ? ' As licenças emitidas depois da delegação estão marcadas na lista.' : ''}</span></div>`;
 }
+const COR_MIN = { 'Lavra / extração': '#6d4c41', 'Pesquisa mineral': '#ffb300', 'Disponibilidade': '#9e9e9e' };
+const COR_RSK = { 'Muito alto': '#b71c1c', 'Alto': '#ef6c00' };
 const COR_LIC = { 'Licença de Operação': '#2e7d32', 'Licença Simplificada': '#66bb6a', 'Licença por Adesão e Compromisso': '#26a69a', 'Licença Prévia / de Instalação': '#ffa000',
     'Dispensa / inexigibilidade': '#ab47bc', 'Autorização Ambiental': '#1e88e5', 'Autorização Florestal': '#6d4c41', 'Outras': '#78909c' };
 const COR_OUT = { 'Captação superficial': '#0288d1', 'Poço (água subterrânea)': '#5e35b1', 'Lançamento de efluentes': '#8d6e63', 'Barragem / soleira': '#00897b', 'Obras e intervenções em rios': '#90a4ae' };
@@ -60,6 +62,12 @@ function adicionarCamadas() {
         paint: { 'text-color': '#263238', 'text-halo-color': '#fff', 'text-halo-width': 1.4 } });
     map.addSource('pts', { type: 'vector', tiles: [new URL('data/tiles/{z}/{x}/{y}.pbf', location.href).href.replace(/%7B/g, '{').replace(/%7D/g, '}')], minzoom: 6, maxzoom: 13 });
     const raio = ['interpolate', ['linear'], ['zoom'], 8, 2, 12, 4.5, 16, 7];
+    map.addSource('mr', { type: 'vector', tiles: [new URL('data/tiles_mr/{z}/{x}/{y}.pbf', location.href).href.replace(/%7B/g, '{').replace(/%7D/g, '}')], minzoom: 6, maxzoom: 13 });
+    // mineração (ANM) e setores de risco (SGB), por baixo dos pontos
+    map.addLayer({ id: 'min-fill', type: 'fill', source: 'mr', 'source-layer': 'min', minzoom: 7, paint: { 'fill-color': ['match', ['get', 'g'], ...Object.entries(COR_MIN).flat(), '#8d6e63'], 'fill-opacity': 0.22 } });
+    map.addLayer({ id: 'min-linha', type: 'line', source: 'mr', 'source-layer': 'min', minzoom: 7, paint: { 'line-color': ['match', ['get', 'g'], ...Object.entries(COR_MIN).flat(), '#8d6e63'], 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.4, 13, 1.6] } });
+    map.addLayer({ id: 'rsk-fill', type: 'fill', source: 'mr', 'source-layer': 'rsk', paint: { 'fill-color': ['match', ['get', 'gr'], ...Object.entries(COR_RSK).flat(), '#ef6c00'], 'fill-opacity': 0.45 } });
+    map.addLayer({ id: 'rsk-linha', type: 'line', source: 'mr', 'source-layer': 'rsk', paint: { 'line-color': '#7f0000', 'line-width': ['interpolate', ['linear'], ['zoom'], 7, 0.8, 13, 2.4] } });
     map.addLayer({ id: 'lic-venc', type: 'circle', source: 'pts', 'source-layer': 'lic', minzoom: 8, filter: ['==', ['get', 'si'], 'Vencida'],
         paint: { 'circle-radius': raio, 'circle-color': '#9e9e9e', 'circle-stroke-color': '#fff', 'circle-stroke-width': 0.8 } });
     map.addLayer({ id: 'lic-vig', type: 'circle', source: 'pts', 'source-layer': 'lic', minzoom: 8, filter: ['!=', ['get', 'si'], 'Vencida'],
@@ -74,14 +82,17 @@ function adicionarCamadas() {
         Object.entries(COR_LIC).map(([k, c]) => `<div class="it"><span class="pt" style="background:${c}"></span>${k}</div>`).join('') +
         '<div class="it"><span class="pt" style="background:#9e9e9e"></span>Licença vencida sem renovação</div><div class="rot">Outorgas (cor = tipo)</div>' +
         Object.entries(COR_OUT).map(([k, c]) => `<div class="it"><span class="pt" style="background:${c}"></span>${k}</div>`).join('') +
-        '<div class="it"><span class="pt" style="background:#fff;box-shadow:0 0 0 2px #c62828"></span>Contorno vermelho: vencida/irregular · laranja: vence em 6 meses</div><div class="rot">Pontos aparecem ao aproximar o mapa</div>';
-    for (const id of ['lic-vig', 'lic-venc', 'out-val', 'out-prob']) {
+        '<div class="it"><span class="pt" style="background:#fff;box-shadow:0 0 0 2px #c62828"></span>Contorno vermelho: vencida/irregular · laranja: vence em 6 meses</div>' +
+        '<div class="rot">Processos minerários (ANM)</div>' + Object.entries(COR_MIN).map(([k, c]) => `<div class="it"><span class="sw" style="background:${c}"></span>${k}</div>`).join('') +
+        '<div class="rot">Setores de risco geológico (SGB)</div>' + Object.entries(COR_RSK).map(([k, c]) => `<div class="it"><span class="sw" style="background:${c}"></span>Risco ${k.toLowerCase()}</div>`).join('') +
+        '<div class="it">Município sem setor não significa ausência de risco: pode não ter sido mapeado.</div><div class="rot">Pontos e áreas aparecem ao aproximar o mapa</div>';
+    for (const id of ['lic-vig', 'lic-venc', 'out-val', 'out-prob', 'rsk-fill', 'min-fill']) {
         map.on('click', id, e => { if (window.modoRaioX) return; e.originalEvent._pt = true; popup(e.features[0], e.lngLat); });
         map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer');
         map.on('mouseleave', id, () => map.getCanvas().style.cursor = '');
     }
     map.on('click', 'mun-fill', e => { if (e.originalEvent._pt || window.modoRaioX) return; abrirMunicipio(e.features[0].properties.cod, false); });
-    document.querySelectorAll('#camadas input[data-c]').forEach(i => i.addEventListener('change', () => map.setLayoutProperty(i.dataset.c, 'visibility', i.checked ? 'visible' : 'none')));
+    document.querySelectorAll('#camadas input[data-c]').forEach(i => i.addEventListener('change', () => i.dataset.c.split(',').forEach(c => map.setLayoutProperty(c, 'visibility', i.checked ? 'visible' : 'none'))));
     document.getElementById('satelite').addEventListener('change', e => {
         if (e.target.checked) { if (!map.getSource('sat')) map.addSource('sat', { type: 'raster', url: 'mapbox://mapbox.satellite', tileSize: 256 }); map.addLayer({ id: 'sat', type: 'raster', source: 'sat' }, 'mun-fill'); }
         else if (map.getLayer('sat')) map.removeLayer('sat');
@@ -342,14 +353,18 @@ function limparDestaque() { if (marcaDestaque) { marcaDestaque.remove(); marcaDe
 function popup(f, ll) {
     const p = f.properties, lin = (k, v) => v ? `<tr><td>${k}</td><td>${esc(v)}</td></tr>` : '';
     let h;
-    if (f.layer.id.startsWith('lic')) h = `<div class="pop"><h4>${esc(p.n)}</h4><table>${lin('Atividade', p.a)}${lin('Atividade específica', p.e !== p.a ? p.e : '')}${lin('Modalidade', `${p.s} – ${p.g}`)}
+    if (f.layer.id === 'min-fill') h = `<div class="pop"><h4>Processo minerário ${esc(p.pr)}</h4><table>${lin('Fase', p.f)}${lin('Substância', p.s)}${lin('Uso', p.u)}${lin('Área (ha)', p.a)}${lin('Ano', p.an)}${lin('Titular', p.t)}${lin('Último evento', p.e)}</table>
+        <a href="https://sistemas.anm.gov.br/SCM/Extra/site/admin/pesquisarProcessos.aspx" target="_blank" rel="noopener">Consultar no Cadastro Mineiro (ANM) ↗</a><p class="hint">Fonte: ANM – SIGMINE.</p></div>`;
+    else if (f.layer.id === 'rsk-fill') h = `<div class="pop"><h4>Setor de risco ${esc(p.n)}</h4><table>${lin('Município', p.mu)}${lin('Grau de risco', p.gr)}${lin('Processo', p.pr)}${lin('Local', p.lo)}${lin('Mapeado em', p.dt)}${lin('Edificações', p.ed)}${lin('Pessoas (estimativa)', p.pe)}${lin('Intervenção sugerida', p.iv)}</table>
+        <a href="https://geoportal.sgb.gov.br/desastres/" target="_blank" rel="noopener">Mapa para Prevenção de Desastres (SGB) ↗</a></div>`;
+    else if (f.layer.id.startsWith('lic')) h = `<div class="pop"><h4>${esc(p.n)}</h4><table>${lin('Atividade', p.a)}${lin('Atividade específica', p.e !== p.a ? p.e : '')}${lin('Modalidade', `${p.s} – ${p.g}`)}
         ${lin('Nº do documento', p.d)}${lin('Emissão', p.em)}${lin('Validade', p.va)}${lin('Situação', p.si)}${lin('Outorga de captação', p.oc)}${lin('Protocolo', p.p)}${lin('Localização', p.lo ? 'Aproximada – ponto da outorga de água do mesmo titular' : 'Cadastrada no licenciamento (IAT)')}</table>
         <a href="${linkSGA(p)}" target="_blank" rel="noopener">📄 Abrir a licença no SGA (PDF) ↗</a>${window.blocoEmitir ? blocoEmitir({ nome: p.n, c: p.c, p: p.p, xy: [ll.lng, ll.lat] }) : ''}</div>`;
     else h = `<div class="pop"><h4>${esc(p.nome)}</h4><table>${lin('Empreendimento', p.emp)}${lin('Tipo', p.interf || p.tipo)}${lin('Documento', p.doc)}${lin('Nº', p.num)}
         ${lin('Situação', p.situ + (p.st && p.st !== p.situ ? ` (${p.st})` : ''))}${lin('Publicação', p.pub)}${lin('Vencimento', p.venc)}${lin('Finalidade', p.fin)}
         ${lin('Vazão máxima', p.vazao ? p.vazao + ' m³/h' : '')}${lin('Corpo hídrico / aquífero', p.corpo)}${lin('Bacia', p.bacia)}${lin('Setor', p.setor)}</table>${window.blocoEmitir ? blocoEmitir({ nome: p.nome, c: p.c, num: p.num, xy: [ll.lng, ll.lat] }) : ''}</div>`;
     const pop = new mapboxgl.Popup({ maxWidth: '360px' }).setLngLat(ll).setHTML(h).addTo(map);
-    if (CHAVE && p.c) {
+    if (CHAVE && p.c && !/^(min|rsk)/.test(f.layer.id)) {
         const lic = f.layer.id.startsWith('lic');
         htmlContato(String(p.c), lic ? 'l' : 'o', lic ? p.p : p.num).then(extra => { if (extra && pop.isOpen()) pop.setHTML(h.replace(/<\/div>$/, extra + '</div>')); });
     }
