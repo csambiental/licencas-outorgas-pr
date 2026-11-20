@@ -590,6 +590,7 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         }
         return out;
     };
+    const limparCar = (t, cab) => (t || '').replace(cab, '').replace(/\s*(-{2,}|--)\s*/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400);
     R.secaoLicencaPDF = function (e, L) {
         const base = new Map((e.lic || []).map(x => [String(x.p || '').replace(/\D/g, ''), x]));
         return L.map(l => {
@@ -600,10 +601,11 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
             if (b && l.validade && b.va && l.validade !== b.va) avisos.push(`validade no PDF (${esc(l.validade)}) diferente da base pública (${esc(b.va)}) – vale a do documento`);
             const cond = l.condicionantes || [];
             return `<h3>${esc(l.modalidade || 'Licença')} ${l.numero ? 'nº ' + esc(l.numero) : ''} <span class="hint">(${esc(l.arquivo)})</span></h3>
-<table><tbody>${[['Protocolo', l.protocolo], ['Emissão', l.emissao], ['Validade', l.validade], ['Atividade', l.atividade]].filter(([, v]) => v).map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
+<table><tbody>${[['Documento', [l.sigla, l.numero].filter(Boolean).join(' nº ')], ['Protocolo', l.protocolo], ['Emissão', l.emissao], ['Validade', l.validade], ['Atividade', l.atividade], ['Porte', l.porte],
+    ['Água utilizada', limparCar(l.agua, /^.*?Coordenadas UTM \(E-N\)/)], ['Efluentes', limparCar(l.efluentes, /^.*?Coordenadas UTM \(E-N\)/)], ['Resíduos sólidos', limparCar(l.residuos, /^.*?Destino Final/)]].filter(([, v]) => v).map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
 ${avisos.length ? `<p class="obs"><b>Atenção:</b> ${avisos.join('; ')}.</p>` : ''}
-${cond.length ? `<p>${cond.length} condicionante(s) identificada(s); ${cond.filter(c => c.prazo).length} com prazo ou periodicidade expressos no texto.</p>
-<table><thead><tr><th>Nº</th><th>Condicionante (texto da licença)</th><th>Prazo / periodicidade</th></tr></thead><tbody>${cond.map(c => `<tr><td>${esc(c.n)}</td><td>${esc(c.texto)}</td><td>${esc(c.prazo || '–')}</td></tr>`).join('')}</tbody></table>`
+${cond.length ? `<p>${cond.length} condicionante(s) identificada(s); ${cond.filter(c => c.prazo).length} com prazo ou periodicidade expressos no texto; as demais valem durante toda a vigência.</p>
+<table><thead><tr><th>Nº</th><th>Condicionante (texto da licença)</th><th>Tema</th><th>Prazo / periodicidade</th></tr></thead><tbody>${cond.map(c => `<tr><td>${esc(c.n)}</td><td>${esc(c.texto)}</td><td>${esc(c.tema || '–')}</td><td>${esc(c.prazo || 'Durante a vigência')}</td></tr>`).join('')}</tbody></table>`
                 : '<p class="vazio">Nenhuma lista de condicionantes reconhecida automaticamente neste PDF. Confira o documento.</p>'}
 <p class="hint">Leitura automática do texto do PDF: confira sempre com o documento original. O arquivo foi lido apenas no navegador e não foi enviado a nenhum servidor.</p>`;
         }).join('');
