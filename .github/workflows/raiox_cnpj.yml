@@ -1,0 +1,21 @@
+name: Raio X por CNPJ (resultado cifrado)
+on: { workflow_dispatch: { inputs: { hashes: { description: 'SHA-256 dos CNPJs (14 dígitos), separados por ;', required: true } } } }
+permissions: { contents: write }
+jobs:
+  r:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: pip install -q shapely playwright && python -m playwright install --with-deps chromium >/dev/null
+      - env: { HASHES: '${{ inputs.hashes }}' }
+        run: python3 tools/raiox_cnpj.py /tmp/rx 2>&1 | tee /tmp/log.txt
+      - run: |
+          cd /tmp && tar czf rx.tgz rx && openssl rand -out k.bin 32
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in rx.tgz -out rx.tgz.enc -pass file:k.bin
+          openssl pkeyutl -encrypt -pubin -inkey $GITHUB_WORKSPACE/tools/chave_publica_relatorios.pem -in k.bin -out k.bin.enc
+          mkdir s && mv rx.tgz.enc k.bin.enc s/ && cd s && git init -q -b raiox-cnpj && git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m cifrado
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" raiox-cnpj
