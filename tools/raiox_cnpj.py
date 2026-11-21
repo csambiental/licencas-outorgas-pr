@@ -7,7 +7,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 from processar import baixar, LIC
 OUT = sys.argv[1]; os.makedirs(OUT, exist_ok=True)
 H = [h.strip().lower() for h in os.environ.get('HASHES', '').split(';') if h.strip()]
-dig = lambda v: re.sub(r'\D', '', str(v or ''))
+def dig(v):   # o campo vem numérico: zeros à esquerda somem e pode vir como float
+    if v is None or v == '': return ''
+    if isinstance(v, (int, float)): return str(int(v)).zfill(14) if int(v) > 99999999999 else ''
+    s = str(v).strip(); s = str(int(float(s))) if re.fullmatch(r'\d+\.0+', s) else re.sub(r'\D', '', s)
+    return s.zfill(14) if len(s) > 11 else ''
 lic = baixar(LIC, ['cpf_cnpj', 'nome_razao_social', 'cod_ibge', 'nome_municipio'])
 print('licenças lidas', len(lic), flush=True)
 achou = collections.defaultdict(list)
