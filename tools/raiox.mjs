@@ -128,6 +128,7 @@ if (args.contatos) {
 let r;
 if (MODO_EMP) {
     op.soMunicipio = !!args['so-municipio']; op.cnpj = args.cnpj || '';
+    op.titulares = String(args.titulares || process.env.TITULARES || '').split('||').map(t => t.trim()).filter(Boolean);   // grupo informado pelo analista
     r = RaioX.empreendimento(ref, dados, munGeo, op);
     if (r.unidades.length) {   // vizinhos para o entorno de 1 km
         const viz = RaioX.municipiosDaArea(RaioX.area({ tipo: 'circulo', centro: r.unidades[0].decl.xy, raio: 500 }), munGeo).filter(c => !cods.includes(c));

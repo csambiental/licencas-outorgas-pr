@@ -5,7 +5,7 @@
 (function (raiz) {
     'use strict';
     const R = {};
-    const VERSAO = '1.4';
+    const VERSAO = '1.5';
     const RAIO_EMP = 500;   // entorno imediato do empreendimento (m)
     const MAPBOX_TOKEN = 'pk.eyJ1IjoiY3NhbWJpZW50YWwiLCJhIjoiY205MWk4eHU4MDE3czJxcHNqamR4emd5aiJ9.e8K-ENRHJwXTz_FGGwYExg';
     const SGA = 'https://www.sga.pr.gov.br/sga-iap/consultarProcessoLicenciamento.do?action=exibirDadosPublicoLicenca&ucsChamador=carregarInterfaceInicial';
@@ -364,23 +364,47 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
     const br = d => d ? d.toLocaleDateString('pt-BR') : '—';
 
     // ref = {nome, cod, xy?, cnpj?}; dados = arquivos m/<cod>.json carregados; op = {soMunicipio, finalidade, ...}
+    // ---- titulares do mesmo grupo e possível licença sucessora (backlog RX-01 / RX-05)
+    const G_PUB = /\b(PREFEITURA|MUNICIPIO|ESTADO DO PARANA|GOVERNO|SECRETARIA|DEPARTAMENTO|CAMARA MUNICIPAL|COPEL|SANEPAR|DER|DNIT|INSTITUTO AGUA E TERRA|EMATER|IDR|UNIVERSIDADE|AUTARQUIA|CONSORCIO)\b/;
+    const G_STOP = new Set(('LTDA EIRELI EPP MEI SOCIEDADE ANONIMA COMERCIO INDUSTRIA AGRO AGROPECUARIA AGRICOLA AGROINDUSTRIAL SEMENTES FAZENDA FAZENDAS SITIO TRANSPORTES TRANSPORTADORA SERVICOS CEREAIS ARMAZENS ' +
+        'IMPORTACAO EXPORTACAO FILHO FILHOS JUNIOR NETO SOBRINHO COOPERATIVA GRAOS POSTO POSTOS COMBUSTIVEIS GRUPO HOLDING PARTICIPACOES EMPREENDIMENTOS ADMINISTRACAO ' +
+        'SILVA SANTOS OLIVEIRA SOUZA SOUSA PEREIRA LIMA FERREIRA COSTA RODRIGUES ALVES GOMES RIBEIRO MARTINS CARVALHO ALMEIDA LOPES SOARES FERNANDES VIEIRA BARBOSA ROCHA DIAS NASCIMENTO ' +
+        'ANDRADE MOREIRA NUNES MARQUES MACHADO MENDES FREITAS CARDOSO RAMOS GONCALVES SANTANA TEIXEIRA CORREA BATISTA CAMPOS MIRANDA ARAUJO MORAES BORGES PINTO CAVALCANTI').split(' '));
+    const gNorm = t => semAc(t).replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const gTok = t => gNorm(t).split(' ').filter(w => w.length >= 4 && !G_STOP.has(w));
+    const G_EQUIV = [/SEMENT|BENEFICIAMENTO DE GR|ARMAZEN|SECAGEM|SILO|CEREAL/, /COMBUSTIVE|ABASTECIMENTO/, /AVICULT|AVIARIO|FRANGO|\bAVES\b/, /SUINOCULT|SUINO/, /BOVINOCULT|CONFINAMENTO|BOVINO|LEITE|ORDENHA/,
+        /PISCICULT|AQUICULT|PEIXE/, /LAVADOR|LAVAGEM/, /IRRIGA/, /LATIC/, /ABATE|FRIGOR/];
+    const gClasse = a => G_EQUIV.findIndex(re => re.test(gNorm(a)));
     R.empreendimento = function (ref, dados, munGeo, op) {
         op = op || {};
         const chave = R.chaveNome(ref.nome), pf = provavelPF(ref.nome), hoje = new Date();
         const so = pf || op.soMunicipio;
+        // grupo: titulares informados pelo analista ou sugeridos pelo nome (mesmo sobrenome/razão) nos municípios onde o titular consultado tem registros
+        const inf = (op.titulares || []).map(t => String(t).trim()).filter(Boolean);
+        const munsTit = new Set(dados.filter(d => d.lic.some(x => R.chaveNome(x.n) === chave) || d.out.some(x => R.chaveNome(x.nome) === chave)).map(d => d.cod));
+        const tk = new Set([ref.nome, ...inf].flatMap(gTok)), chInf = new Set(inf.map(R.chaveNome));
+        const doGrupo = (n, cod) => { const c = R.chaveNome(n); if (c === chave || chInf.has(c)) return true; if (op.semGrupo || G_PUB.test(gNorm(n))) return false;
+            if (!inf.length && !munsTit.has(cod)) return false; return gTok(n).some(w => tk.has(w)); };
         let lic = [], out = [];
         for (const d of dados) {
             if (so && d.cod !== ref.cod) continue;
-            for (const x of d.lic) if (R.chaveNome(x.n) === chave) lic.push(Object.assign({}, x, { cod: d.cod, mun: d.nome }));
-            for (const x of d.out) if (R.chaveNome(x.nome) === chave) out.push(Object.assign({}, x, { cod: d.cod, mun: d.nome }));
+            for (const x of d.lic) if (doGrupo(x.n, d.cod)) lic.push(Object.assign({}, x, { cod: d.cod, mun: d.nome, grp: R.chaveNome(x.n) !== chave }));
+            for (const x of d.out) if (doGrupo(x.nome, d.cod)) out.push(Object.assign({}, x, { cod: d.cod, mun: d.nome, grp: R.chaveNome(x.nome) !== chave }));
+        }
+        const grupoNomes = [...new Set(lic.map(x => x.n).concat(out.map(x => x.nome)).filter(Boolean).map(n => n.trim()))].sort();
+        // possível sucessora: licença vigente do grupo, emitida depois, da mesma atividade ou de atividade equivalente – sempre "a conferir"
+        for (const x of lic.filter(x => x.si === 'Vencida')) {
+            const em = dataBR(x.em), cand = lic.filter(y => y !== x && y.si !== 'Vencida' && (!em || (dataBR(y.em) || 0) > em)).sort((a, b) => (dataBR(b.em) || 0) - (dataBR(a.em) || 0));
+            const mesma = cand.find(y => gNorm(y.a) === gNorm(x.a)), cl = gClasse(x.a), eq = !mesma && cl >= 0 ? cand.find(y => gClasse(y.a) === cl) : null, y = mesma || eq;
+            if (y) x.suc = { s: y.s, d: y.d, va: y.va, a: y.a, n: y.n, tipo: mesma ? 'mesma atividade' : 'atividade equivalente' };
         }
         // refinamento por CNPJ (quando os contatos da Área CS foram anexados em x.ct)
-        let vinculo = 'nome do titular normalizado' + (so ? ' no município' : ' em todo o Paraná');
+        let vinculo = 'nome do titular normalizado' + (so ? ' no município' : ' em todo o Paraná') + (grupoNomes.length > 1 ? ' + titulares do mesmo grupo' : '');
         if (op.cnpj) {
             const raiz = String(op.cnpj).replace(/\D/g, '').slice(0, 8);
-            const ok = x => !x.ct || !x.ct.cnpj || x.ct.cnpj.replace(/\D/g, '').startsWith(raiz);
+            const ok = x => x.grp || !x.ct || !x.ct.cnpj || x.ct.cnpj.replace(/\D/g, '').startsWith(raiz);
             lic = lic.filter(ok); out = out.filter(ok);
-            vinculo = `CNPJ (raiz ${raiz}) e nome do titular`;
+            vinculo = `CNPJ e nome do titular`;
         }
         const ref0 = ref.xy || null;
         for (const x of lic.concat(out)) x.dm = x.xy && ref0 ? Math.round(dist(x.xy, ref0)) : null;
@@ -426,7 +450,9 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
                 v6.map(x => `${x.s} ${x.d} vence ${x.va}; prazo de 120 dias ${somaDias(dataBR(x.va), -120) < hoje ? 'já passou' : 'até ' + br(somaDias(dataBR(x.va), -120))}`).join('; '),
                 tarde.length ? 'Protocolar a renovação imediatamente e verificar se há protocolo no SGA.' : 'Preparar e protocolar a renovação antes do prazo de 120 dias.');
         } else if (vig.length) add('LIC-02', 'Licenciamento', 'Requerer renovação com 120 dias de antecedência (LC 140/2011, art. 14, §4º)', 'Conforme', 'Baixo', 'Nenhuma licença vence nos próximos 6 meses.', 'Manter calendário de vencimentos.');
-        if (venc.length && vig.length) add('LIC-06', 'Licenciamento', 'Atividades licenciadas no passado continuam regulares ou foram encerradas', 'Verificar', 'Médio', `${venc.length} licença(s) vencida(s) sem renovação: ${[...new Set(venc.map(x => x.a))].slice(0, 4).join('; ')}.`, 'Confirmar em vistoria se essas atividades foram encerradas ou incorporadas a outra licença.', 'Hipótese a verificar');
+        const vencSuc = venc.filter(x => x.suc);
+        if (vencSuc.length) add('LIC-07', 'Licenciamento', 'Licenças vencidas sucedidas por licença vigente do grupo', 'Verificar', 'Baixo', vencSuc.slice(0, 5).map(x => `${x.s} ${x.d} (${x.a}), vencida em ${x.va} → possível sucessora ${x.suc.s} ${x.suc.d} até ${x.suc.va} (${x.suc.tipo})`).join('; ') + (vencSuc.length > 5 ? ` e mais ${vencSuc.length - 5}` : '') + ' – a conferir.', 'Conferir no SGA e com o cliente se a licença mais recente abrange a atividade e o local da licença vencida (ver histórico no Anexo A).', 'Hipótese a verificar');
+        if (venc.filter(x => !x.suc).length && vig.length) add('LIC-06', 'Licenciamento', 'Atividades licenciadas no passado continuam regulares ou foram encerradas', 'Verificar', 'Médio', `${venc.filter(x => !x.suc).length} licença(s) vencida(s) sem renovação nem sucessora identificada: ${[...new Set(venc.filter(x => !x.suc).map(x => x.a))].slice(0, 4).join('; ')}.`, 'Confirmar em vistoria se essas atividades foram encerradas ou incorporadas a outra licença.', 'Hipótese a verificar');
         if (captProb.length) add('AGU-01', 'Água', 'Captação outorgada ou dispensada (Lei 9.433/1997)', 'Não conforme', 'Alto', captProb.map(docO).join('; '), 'Regularizar ou renovar a outorga no SIGARH.');
         else if (captOk.length) add('AGU-01', 'Água', 'Captação outorgada ou dispensada (Lei 9.433/1997)', 'Conforme', 'Baixo', captOk.slice(0, 4).map(docO).join('; '), 'Conferir em vistoria hidrômetro e volumes captados dentro do outorgado.');
         else if (usaAgua) add('AGU-01', 'Água', 'Captação outorgada ou dispensada (Lei 9.433/1997)', 'Sem evidência', semOut.length ? 'Alto' : 'Médio', semOut.length ? `Atividade com uso típico de água e nenhuma outorga de captação localizada a até 500 m: ${semOut.slice(0, 3).map(x => x.a).join('; ')}.` : 'Atividade com uso típico de água e nenhuma outorga de captação do titular.', 'Verificar a fonte de água (rede pública, poço, captação) e requerer outorga ou dispensa.', 'Hipótese a verificar');
@@ -472,7 +498,7 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         const dLat = RAIO_EMP / KY, dLon = RAIO_EMP / KX(centro[1] || -24);
         return {
             tipo: 'empreendimento', versao: VERSAO, emitido: new Date().toLocaleDateString('pt-BR'), base, finalidade: op.finalidade || 'Diagnóstico', cliente: op.cliente || '',
-            titular, pf, vinculo, cnpj: op.cnpj || (ct && ct.cnpj) || '', ct: ct ? { rs: ct.rs, nf: ct.nf, cnpj: ct.cnpj, sit: ct.sit, porte: ct.porte, cnae: ct.cnae, end: [ct.end, ct.bai, ct.cep].filter(Boolean).join(' – '), mun: ct.mun, tel: ct.tel, email: ct.email } : null,
+            titular, pf, vinculo, grupo: { nomes: grupoNomes, informados: inf.length > 0 }, cnpj: op.cnpj || (ct && ct.cnpj) || '', ct: ct ? { rs: ct.rs, nf: ct.nf, cnpj: ct.cnpj, sit: ct.sit, porte: ct.porte, cnae: ct.cnae, end: [ct.end, ct.bai, ct.cep].filter(Boolean).join(' – '), mun: ct.mun, tel: ct.tel, email: ct.email } : null,
             municipios: munNomes, unidades: U, semCoord: sem, lic, out,
             k: { lic: lic.length, lic_vig: vig.length, lic_venc6: v6.length, lic_vencidas: venc.length, out: out.length, out_val: out.filter(x => !/Vencida|Irregular/.test(x.situ)).length, out_prob: out.filter(x => /Vencida|Irregular/.test(x.situ)).length, out_venc6: o6.length, vazao_capt_m3h: Math.round(captOk.reduce((s, x) => s + num(x.vazao), 0) * 10) / 10, unidades: U.length },
             matriz: M, exposicao, pontos: pts, escopo, docs, entorno,
@@ -498,6 +524,7 @@ ${Object.keys(ops).length ? `<h2>7. ${r.finalidade === 'Prospecção' ? 'Oportun
         doM(add, 'LIC-01', 'Licença ambiental válida para a atividade (IAT – SGA/SIA)');
         doM(add, 'LIC-02', 'Renovação requerida com 120 dias de antecedência');
         if (m('LIC-06')) doM(add, 'LIC-06', 'Licenças antigas encerradas ou incorporadas');
+        if (m('LIC-07')) doM(add, 'LIC-07', 'Licenças vencidas com possível sucessora no histórico (a conferir)');
         add = grupo('Recursos hídricos');
         doM(add, 'AGU-01', 'Captação de água outorgada ou dispensada (SIGARH)');
         if (!m('AGU-01')) add('Captação de água outorgada ou dispensada (SIGARH)', 'na', 'Atividade sem uso típico de água e sem outorga de captação do titular');
@@ -650,9 +677,12 @@ ${cond.length ? `<p>${cond.length} condicionante(s) identificada(s); ${cond.filt
         const agendaT = `<table class="tb ag"><thead><tr><th>Obrigação</th><th>Referência</th><th>Base legal</th><th>Prazo</th><th>Situação</th></tr></thead><tbody>${temas.map(t => `<tr class="gr"><td colspan="5">${esc(t)}</td></tr>${AG.filter(a => a.tema === t).map(a => `<tr><td><b>${esc(a.obrig)}</b>${a.fonte !== 'calculado' ? `<br><span class="hint">${esc(a.fonte)}</span>` : ''}</td><td>${esc(a.ref)}</td><td class="hint">${esc(a.base)}</td><td class="nw">${esc(a.quando)}</td><td><span class="selo ${STA[a.st][1]}">${STA[a.st][0]}</span></td></tr>`).join('')}`).join('')}</tbody></table>`;
         const agCont = k => AG.filter(a => a.st === k).length;
         // ---------- anexos
-        const tl = tab(['Nº', 'Unid.', 'Atividade', 'Documento', 'Emissão', 'Validade'], e.lic.map((x, i) => [`<b>${i + 1}</b>`, esc(unid(e, x)),
-            `${esc(x.a)}${x.e && x.e !== x.a ? `<br><span class="hint">${esc(x.e)}</span>` : ''}<br><span class="hint">${esc(x.mun)}</span>`,
-            `${esc(x.s)} <span class="mono">nº ${esc(x.d || '–')}</span><br><a href="${linkSGA(x)}" target="_blank" rel="noopener">consulta no SGA ↗</a>`, esc(x.em || '–'), x.si === 'Vencida' ? `<b class="vm">${esc(x.va || '–')}<br>vencida</b>` : venc(x.va)]), 'Nenhuma licença do titular localizada na base pública.');
+        const multi = ((e.grupo || {}).nomes || []).length > 1;
+        const tl = (multi ? `<p class="obs"><b>Titulares agrupados para análise:</b> ${e.grupo.nomes.map(n => esc(ocultar(n, op))).join('; ')} – ${e.grupo.informados ? 'informados pelo analista' : 'sugeridos automaticamente pela semelhança de nome'}; confirmar na Fase 2.</p>` : '') +
+            '<p class="hint">Histórico completo de licenciamento (vigentes e vencidas), inclusive registros sem coordenada no IAT. A relação entre as licenças (sucessão, ampliação, outro local) é indicada como possibilidade e precisa ser conferida nos documentos.</p>' +
+            tab(['Nº', 'Unid.', multi ? 'Titular / atividade' : 'Atividade', 'Documento', 'Emissão', 'Validade'], e.lic.map((x, i) => [`<b>${i + 1}</b>`, esc(unid(e, x)),
+            `${multi ? `<b>${esc(ocultar(x.n, op))}</b><br>` : ''}${esc(x.a)}${x.e && x.e !== x.a ? `<br><span class="hint">${esc(x.e)}</span>` : ''}<br><span class="hint">${esc(x.mun)}</span>`,
+            `${esc(x.s)} <span class="mono">nº ${esc(x.d || '–')}</span><br><a href="${linkSGA(x)}" target="_blank" rel="noopener">consulta no SGA ↗</a>`, esc(x.em || '–'), x.si === 'Vencida' ? `<b class="vm">${esc(x.va || '–')}<br>vencida</b>${x.suc ? `<br><b class="lj">possível sucessora: ${esc(x.suc.s)} nº ${esc(x.suc.d)} até ${esc(x.suc.va)}</b><br><span class="hint">${esc(x.suc.tipo)} – a conferir</span>` : ''}` : venc(x.va)]), 'Nenhuma licença do titular localizada na base pública.');
         const to = tab(['Nº', 'Unid.', 'Tipo / finalidade', 'Documento', 'Vazão (m³/h)', 'Corpo hídrico', 'Vencimento'], e.out.map((x, i) => [`<b>${i + 1}</b>`, esc(unid(e, x)),
             `${esc(x.interf || x.tipo)}${x.fin ? `<br><span class="hint">${esc(x.fin)}</span>` : ''}`, `<span class="mono">${esc(x.num || '–')}</span><br><span class="hint">${esc(x.doc || '')}</span>`,
             esc(x.vazao || '–'), `${esc(x.corpo || '–')}<br><span class="hint">${esc(x.bacia || '')}</span>`, /Irregular/.test(x.situ) ? '<b class="vm">irregular</b>' : venc(x.venc)]), 'Nenhuma outorga do titular localizada na base pública (SIGARH).');
@@ -736,7 +766,7 @@ ${op.botaoImprimir === false ? '' : '<p class="noprint"><button onclick="window.
 
 ${sec('Síntese executiva', 'Onde está, como está e o que fazer agora', `
   ${e.finalidade === 'Prospecção' ? '<div class="interno">DOCUMENTO DE USO INTERNO – contém contatos</div>' : ''}
-  <div class="id">${card('Titular', esc(nome), PF ? 'pessoa física' : e.cnpj ? `CNPJ <span class="mono">${esc(e.cnpj)}</span>` : 'CNPJ não identificado na base pública')}
+  <div class="id">${card('Titular', esc(nome), PF ? 'pessoa física' : e.cnpj ? 'CNPJ conferido na consulta (não exibido)' : 'CNPJ não identificado na base pública')}
    ${card('Atividade', esc((e.ct && e.ct.cnae) || (u1 && (u1.ativ[0] || ((e.lic.find(x => x._u === u1.id) || {}).a))) || '–'), e.ct && e.ct.porte ? esc(e.ct.porte) : '')}
    ${card('Ponto declarado', u1 ? `<span class="mono">${u1.decl.xy[1].toFixed(5)}, ${u1.decl.xy[0].toFixed(5)}</span>` : '–', u1 ? `${esc(u1.mun)} · <a href="https://www.google.com/maps/@${u1.decl.xy[1].toFixed(6)},${u1.decl.xy[0].toFixed(6)},400m/data=!3m1!1e3" target="_blank" rel="noopener">satélite ↗</a>` : '')}
    ${contato ? card('Contato (uso interno)', esc(contato), '', 'l3') : ''}</div>
